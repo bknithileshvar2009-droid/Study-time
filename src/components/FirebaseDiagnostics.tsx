@@ -112,22 +112,30 @@ export const FirebaseDiagnostics: React.FC = () => {
           </div>
         </div>
 
-        {/* Configuration Card */}
-        <div className="p-4 rounded-xl bg-black/40 border border-slate-800/80 space-y-3">
+        {/* Database Path Audit */}
+        <div className="md:col-span-2 p-4 rounded-xl bg-black/40 border border-slate-800/80 space-y-3">
           <h4 className="text-[10px] uppercase font-bold tracking-widest text-slate-500 flex items-center gap-2">
-            <Lock className="w-3 h-3" /> Configuration
+            <Lock className="w-3 h-3" /> Database Reference Paths
           </h4>
           
-          <div className="space-y-2 text-[10px] font-mono">
-            <div className="flex flex-col gap-1">
-              <span className="text-slate-500">Project ID:</span>
-              <span className="text-slate-300 break-all">{config.projectId}</span>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="space-y-1">
+              <span className="text-[9px] text-slate-500 uppercase font-bold">Standard Sync Path (Target)</span>
+              <div className="p-2 rounded bg-slate-950 font-mono text-[10px] text-amber-500/90 break-all border border-slate-800">
+                users/{cloudStatus.userId || '{uid}'}/studySessions/
+              </div>
             </div>
-            <div className="flex flex-col gap-1">
-              <span className="text-slate-500">Database ID:</span>
-              <span className="text-amber-500/80 break-all">{config.firestoreDatabaseId}</span>
+            <div className="space-y-1">
+              <span className="text-[9px] text-slate-500 uppercase font-bold">Diagnostics Test Path</span>
+              <div className="p-2 rounded bg-slate-950 font-mono text-[10px] text-slate-400 break-all border border-slate-800">
+                users/{cloudStatus.userId || '{uid}'}/diagnostics/
+              </div>
             </div>
           </div>
+          
+          <p className="text-[10px] text-slate-500 italic mt-2">
+            Current system ensures both Laptop and Mobile target the same path when signed into UID: <strong>{cloudStatus.userId || 'Guest'}</strong>.
+          </p>
         </div>
       </div>
 

@@ -20,6 +20,14 @@ import {
 } from '../types';
 import { storageService, DEFAULT_SUBJECTS, DEFAULT_SETTINGS } from '../services/db';
 import { autoFirebaseService, AutoCloudStatus } from '../services/firebase';
+import {
+  authenticateGoogleDrive,
+  getCachedDriveToken,
+  findDedicatedBackupFile,
+  getDriveFileContent,
+  saveOrUpdateDedicatedBackup,
+  disconnectGoogleDrive,
+} from '../services/googleDrive';
 import { soundService } from '../services/audio';
 import { notificationService } from '../services/notifications';
 import {
@@ -42,6 +50,14 @@ interface StartStudyParams {
   targetDurationMinutes?: number;
   pomodoroPhase?: PomodoroPhase;
 }
+
+export type DriveAutoBackupStatus =
+  | 'disconnected'
+  | 'idle'
+  | 'backing_up'
+  | 'backed_up'
+  | 'offline'
+  | 'error';
 
 interface StudyContextType {
   // Navigation
@@ -141,6 +157,15 @@ interface StudyContextType {
   logout: () => Promise<void>;
   runDiagnostics: () => Promise<any>;
 
+  // Google Drive Automatic Backup & Restore
+  isDriveConnected: boolean;
+  driveAutoBackupStatus: DriveAutoBackupStatus;
+  lastDriveBackupMs: number | null;
+  connectDrive: () => Promise<void>;
+  disconnectDrive: () => void;
+  triggerDriveAutoBackup: (force?: boolean) => Promise<boolean>;
+  triggerDriveAutoRestore: (mode?: 'merge' | 'replace') => Promise<boolean>;
+
   // Toast
   toastMessage: string | null;
   showToast: (msg: string) => void;
@@ -165,6 +190,17 @@ export const StudyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [cloudSaveStatus, setCloudSaveStatus] = useState<'idle' | 'saving' | 'success' | 'error'>('idle');
+
+  // Google Drive Automatic Backup & Restore State
+  const [isDriveConnected, setIsDriveConnected] = useState<boolean>(Boolean(getCachedDriveToken()));
+  const [driveAutoBackupStatus, setDriveAutoBackupStatus] = useState<DriveAutoBackupStatus>(
+    getCachedDriveToken() ? 'idle' : 'disconnected'
+  );
+  const [lastDriveBackupMs, setLastDriveBackupMs] = useState<number | null>(null);
+
+  const isDriveBackupInProgressRef = useRef<boolean>(false);
+  const isDriveBackupPendingRef = useRef<boolean>(false);
+  const triggerDriveAutoBackupRef = useRef<(force?: boolean) => Promise<boolean>>(async () => false);
 
   // Idle detection state
   const [idleDetected, setIdleDetected] = useState<boolean>(false);
@@ -408,9 +444,21 @@ export const StudyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       }
     }
 
+    // Track previous UID to detect login/logout/switch events
+    let lastUid: string | null = null;
+
     // React to Auth Changes (Sign-in / Sign-out / UID Change)
     const authUnsubscribe = autoFirebaseService.subscribeStatus((status) => {
-      if (status.userId) {
+      if (status.userId && status.userId !== lastUid) {
+        // UID Changed: Clear sensitive UI state immediately to prevent "Ghost Data" from previous user
+        if (lastUid !== null) {
+          setSessions([]);
+          setSubjects(DEFAULT_SUBJECTS);
+          setGoals([]);
+          setDailyReviews([]);
+        }
+        
+        lastUid = status.userId;
         syncData(status.userId);
       }
     });
@@ -672,6 +720,9 @@ export const StudyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       showToast('Cloud save failed — session preserved locally. Retry from Settings.');
     }
     
+    // Auto-backup to Google Drive if connected
+    triggerDriveAutoBackupRef.current().catch(() => {});
+
     return completedSession;
   }, [activeSession, settings, showToast]);
 
@@ -765,6 +816,7 @@ export const StudyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       await storageService.saveSession(manualSession);
       setSessions((prev) => [manualSession, ...prev].sort((a, b) => b.startTime - a.startTime));
       autoFirebaseService.autoSaveSession(manualSession).catch(() => {});
+      triggerDriveAutoBackupRef.current().catch(() => {});
       showToast(`Manual study session logged: ${formatDurationHuman(activeMs)}`);
 
       return manualSession;
@@ -780,6 +832,7 @@ export const StudyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       await storageService.saveSession(updated);
       setSessions((prev) => prev.map((s) => (s.id === updated.id ? updated : s)));
       autoFirebaseService.autoSaveSession(updated).catch(() => {});
+      triggerDriveAutoBackupRef.current().catch(() => {});
       showToast('Session record updated');
     },
     [showToast]
@@ -790,6 +843,7 @@ export const StudyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       await storageService.deleteSession(id);
       setSessions((prev) => prev.filter((s) => s.id !== id));
       autoFirebaseService.autoDeleteSession(id).catch(() => {});
+      triggerDriveAutoBackupRef.current().catch(() => {});
       showToast('Session deleted');
     },
     [showToast]
@@ -802,6 +856,7 @@ export const StudyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         autoFirebaseService.autoDeleteSession(id).catch(() => {});
       }
       setSessions((prev) => prev.filter((s) => !ids.includes(s.id)));
+      triggerDriveAutoBackupRef.current().catch(() => {});
       showToast(`Deleted ${ids.length} sessions`);
     },
     [showToast]
@@ -811,6 +866,7 @@ export const StudyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     await storageService.clearAllSessions();
     setSessions([]);
     await autoFirebaseService.autoSyncAll([], settings);
+    triggerDriveAutoBackupRef.current().catch(() => {});
     showToast('All study history deleted');
   }, [settings, showToast]);
 
@@ -1130,6 +1186,7 @@ export const StudyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       setSettings(merged);
       await storageService.saveSettings(merged);
       autoFirebaseService.autoSyncAll(sessions, merged).catch(() => {});
+      triggerDriveAutoBackupRef.current().catch(() => {});
       showToast('Settings saved');
     },
     [settings, sessions, showToast]
@@ -1323,6 +1380,156 @@ export const StudyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     return formatDurationHMS(stats.allTimeTotalMs);
   }, [stats.allTimeTotalMs]);
 
+  /* ---------------- GOOGLE DRIVE AUTOMATIC BACKUP & RESTORE ---------------- */
+
+  const triggerDriveAutoBackup = useCallback(
+    async (force = false, retryCount = 0): Promise<boolean> => {
+      const token = getCachedDriveToken();
+      if (!token) {
+        setIsDriveConnected(false);
+        setDriveAutoBackupStatus('disconnected');
+        return false;
+      }
+
+      if (!navigator.onLine) {
+        setDriveAutoBackupStatus('offline');
+        return false;
+      }
+
+      if (isDriveBackupInProgressRef.current && !force) {
+        isDriveBackupPendingRef.current = true;
+        return true;
+      }
+
+      isDriveBackupInProgressRef.current = true;
+      setDriveAutoBackupStatus('backing_up');
+
+      try {
+        const payload = {
+          schemaVersion: 'v1',
+          appName: 'Chronos Study Time Tracker',
+          lastUpdatedMs: Date.now(),
+          studentName: settings.studentName,
+          settings,
+          subjects,
+          goals,
+          dailyReviews,
+          sessions,
+          activeSession,
+        };
+
+        await saveOrUpdateDedicatedBackup(payload);
+        const now = Date.now();
+        setLastDriveBackupMs(now);
+        setDriveAutoBackupStatus('backed_up');
+        setIsDriveConnected(true);
+        isDriveBackupInProgressRef.current = false;
+
+        if (isDriveBackupPendingRef.current) {
+          isDriveBackupPendingRef.current = false;
+          setTimeout(() => triggerDriveAutoBackup(false, 0), 200);
+        }
+        return true;
+      } catch (err: any) {
+        console.warn(`Drive auto-backup attempt ${retryCount + 1} failed:`, err);
+
+        // Exponential backoff retry (up to 3 retries: 2s, 4s, 8s)
+        if (retryCount < 3) {
+          const backoffMs = Math.pow(2, retryCount + 1) * 1000;
+          await new Promise((res) => setTimeout(res, backoffMs));
+          isDriveBackupInProgressRef.current = false;
+          return triggerDriveAutoBackup(false, retryCount + 1);
+        }
+
+        isDriveBackupInProgressRef.current = false;
+        isDriveBackupPendingRef.current = false;
+        setDriveAutoBackupStatus('error');
+        return false;
+      }
+    },
+    [sessions, subjects, goals, dailyReviews, settings, activeSession]
+  );
+
+  useEffect(() => {
+    triggerDriveAutoBackupRef.current = triggerDriveAutoBackup;
+  }, [triggerDriveAutoBackup]);
+
+  const triggerDriveAutoRestore = useCallback(
+    async (mode: 'merge' | 'replace' = 'merge'): Promise<boolean> => {
+      const token = getCachedDriveToken();
+      if (!token) {
+        setIsDriveConnected(false);
+        setDriveAutoBackupStatus('disconnected');
+        return false;
+      }
+
+      try {
+        setDriveAutoBackupStatus('backing_up');
+        const backupFile = await findDedicatedBackupFile();
+        if (!backupFile) {
+          setDriveAutoBackupStatus('idle');
+          return false;
+        }
+
+        const contentStr = await getDriveFileContent(backupFile.id);
+        const backupData = JSON.parse(contentStr);
+
+        if (!backupData || typeof backupData !== 'object' || !Array.isArray(backupData.sessions)) {
+          throw new Error('Invalid backup schema found on Google Drive.');
+        }
+
+        const result = await importFullData(backupData, mode);
+        const backupTimestamp = backupData.lastUpdatedMs || Date.now();
+        setLastDriveBackupMs(backupTimestamp);
+        setDriveAutoBackupStatus('backed_up');
+        setIsDriveConnected(true);
+        showToast(`Synced ${result.addedSessions} records from Google Drive backup`);
+        return true;
+      } catch (err: any) {
+        console.error('Drive auto-restore failed:', err);
+        setDriveAutoBackupStatus('error');
+        return false;
+      }
+    },
+    [importFullData, showToast]
+  );
+
+  const connectDrive = useCallback(async () => {
+    try {
+      await authenticateGoogleDrive();
+      setIsDriveConnected(true);
+      setDriveAutoBackupStatus('idle');
+      showToast('Connected to Google Drive');
+
+      await triggerDriveAutoRestore('merge');
+      await triggerDriveAutoBackup(true);
+    } catch (err: any) {
+      console.error('Connect Google Drive error:', err);
+      showToast('Failed to connect Google Drive');
+    }
+  }, [showToast, triggerDriveAutoRestore, triggerDriveAutoBackup]);
+
+  const disconnectDrive = useCallback(() => {
+    disconnectGoogleDrive();
+    setIsDriveConnected(false);
+    setDriveAutoBackupStatus('disconnected');
+    setLastDriveBackupMs(null);
+    showToast('Disconnected from Google Drive');
+  }, [showToast]);
+
+  // Periodic 60-Second Background Drive Checker
+  useEffect(() => {
+    if (!isDriveConnected || !getCachedDriveToken()) return;
+
+    const intervalId = setInterval(() => {
+      if (getCachedDriveToken() && navigator.onLine) {
+        triggerDriveAutoBackup();
+      }
+    }, 60000);
+
+    return () => clearInterval(intervalId);
+  }, [isDriveConnected, triggerDriveAutoBackup]);
+
   return (
     <StudyContext.Provider
       value={{
@@ -1388,6 +1595,13 @@ export const StudyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         loginWithGoogle,
         logout,
         runDiagnostics,
+        isDriveConnected,
+        driveAutoBackupStatus,
+        lastDriveBackupMs,
+        connectDrive,
+        disconnectDrive,
+        triggerDriveAutoBackup,
+        triggerDriveAutoRestore,
         toastMessage,
         showToast,
       }}

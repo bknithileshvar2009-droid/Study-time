@@ -33,6 +33,7 @@ export const BackupRestoreView: React.FC = () => {
     goals,
     dailyReviews,
     showToast,
+    setActiveTab,
   } = useStudy();
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -235,6 +236,15 @@ export const BackupRestoreView: React.FC = () => {
               >
                 <Upload className="w-4 h-4 text-amber-400" />
                 <span>Import JSON Backup</span>
+              </button>
+
+              {/* Google Drive Vault Button */}
+              <button
+                onClick={() => setActiveTab('drive')}
+                className="flex-1 flex items-center justify-center gap-2 py-3 px-4 bg-gradient-to-r from-blue-600/20 to-emerald-600/20 hover:from-blue-600/30 hover:to-emerald-600/30 text-emerald-300 text-xs font-bold rounded-xl transition-colors border border-emerald-500/30"
+              >
+                <HardDrive className="w-4 h-4 text-blue-400" />
+                <span>Google Drive Vault</span>
               </button>
               <input
                 ref={fileInputRef}

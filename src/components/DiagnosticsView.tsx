@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useStudy } from '../context/StudyContext';
 import { storageService } from '../services/db';
 import { autoFirebaseService } from '../services/firebase';
+import { getDriveDiagnosticLogs, DriveDiagnosticLog } from '../services/googleDrive';
 import {
   Activity,
   CheckCircle2,
@@ -47,6 +48,7 @@ export const DiagnosticsView: React.FC = () => {
 
   const [pingLatencyMs, setPingLatencyMs] = useState<number | null>(null);
   const [isPinging, setIsPinging] = useState(false);
+  const [driveLogs, setDriveLogs] = useState<DriveDiagnosticLog[]>(getDriveDiagnosticLogs());
 
   useEffect(() => {
     // Check storage estimate if available
@@ -59,6 +61,13 @@ export const DiagnosticsView: React.FC = () => {
         });
       });
     }
+
+    // Refresh Drive Diagnostic Logs every 2 seconds
+    const interval = setInterval(() => {
+      setDriveLogs(getDriveDiagnosticLogs());
+    }, 2000);
+
+    return () => clearInterval(interval);
   }, []);
 
   // Run Integrity Audit
@@ -298,6 +307,47 @@ export const DiagnosticsView: React.FC = () => {
           <div className="mt-6 pt-4 border-t border-slate-800/80 text-[11px] text-slate-500">
             <span>Enterprise Firestore synced with isolated user path: /users/{cloudStatus.userId || '...'}/</span>
           </div>
+        </div>
+      </div>
+
+      {/* Google Drive Live Diagnostic Console */}
+      <div className="bg-[#0a0c12] border border-blue-500/30 rounded-2xl p-6 shadow-lg space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Terminal className="w-5 h-5 text-blue-400" />
+            <h2 className="text-sm font-bold text-white">Google Drive Live Activity Log Console</h2>
+          </div>
+          <span className="text-[10px] text-slate-500 font-mono">Non-sensitive operational audit stream</span>
+        </div>
+
+        <div className="p-4 rounded-xl bg-black/80 border border-slate-800 font-mono text-xs max-h-48 overflow-y-auto space-y-1.5">
+          {driveLogs.length === 0 ? (
+            <p className="text-slate-500 italic text-[11px]">
+              No Google Drive operations recorded yet. Connect Google Drive or save a backup to populate logs.
+            </p>
+          ) : (
+            driveLogs.map((log, index) => (
+              <div key={index} className="flex items-start gap-2 leading-relaxed">
+                <span className="text-slate-500 shrink-0">[{log.timestamp}]</span>
+                <span
+                  className={`font-bold shrink-0 uppercase text-[10px] px-1 rounded ${
+                    log.type === 'auth'
+                      ? 'bg-blue-500/20 text-blue-400'
+                      : log.type === 'upload'
+                      ? 'bg-emerald-500/20 text-emerald-400'
+                      : log.type === 'restore'
+                      ? 'bg-amber-500/20 text-amber-400'
+                      : log.type === 'lookup'
+                      ? 'bg-purple-500/20 text-purple-400'
+                      : 'bg-rose-500/20 text-rose-400'
+                  }`}
+                >
+                  {log.type}
+                </span>
+                <span className="text-slate-300 break-all">{log.message}</span>
+              </div>
+            ))
+          )}
         </div>
       </div>
 

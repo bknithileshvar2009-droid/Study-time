@@ -152,6 +152,7 @@ export type ViewTab =
   | 'review'
   | 'reports'
   | 'backup'
+  | 'drive'
   | 'reminders'
   | 'settings'
   | 'diagnostics';

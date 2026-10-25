@@ -24,6 +24,7 @@ import {
   Award,
   RefreshCw,
   AlertTriangle,
+  CheckCircle2,
 } from 'lucide-react';
 
 export const TimerView: React.FC = () => {
@@ -243,6 +244,27 @@ export const TimerView: React.FC = () => {
             </div>
           </div>
         )}
+        {/* Cloud Persistence Status Indicator */}
+        <div className="relative z-10 flex items-center justify-center mt-6 h-6">
+          {cloudSaveStatus === 'saving' && (
+            <div className="flex items-center gap-2 text-amber-400 text-xs font-bold animate-pulse">
+              <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+              <span>SAVING TO CLOUD...</span>
+            </div>
+          )}
+          {cloudSaveStatus === 'success' && (
+            <div className="flex items-center gap-2 text-emerald-400 text-xs font-bold">
+              <CheckCircle2 className="w-3.5 h-3.5" />
+              <span>SYNCED TO FIREBASE</span>
+            </div>
+          )}
+          {cloudSaveStatus === 'error' && (
+            <div className="flex items-center gap-2 text-rose-400 text-xs font-bold">
+              <AlertTriangle className="w-3.5 h-3.5" />
+              <span>CLOUD SAVE FAILED</span>
+            </div>
+          )}
+        </div>
 
         {/* Timer Control Buttons */}
         <div className="relative z-10 mt-8 flex flex-wrap items-center justify-center gap-4">

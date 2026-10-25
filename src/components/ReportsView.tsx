@@ -11,9 +11,12 @@ import {
   calculatePausedDuration,
 } from '../utils/timeFormat';
 import { buildProductionStudyReport } from '../services/pdfReport';
+import { uploadPdfToDrive, getCachedDriveToken, authenticateGoogleDrive } from '../services/googleDrive';
 import { TagBadge } from './TagBadge';
 import {
   FileDown,
+  CloudUpload,
+  HardDrive,
   Printer,
   Calendar,
   Clock,
@@ -37,6 +40,7 @@ export const ReportsView: React.FC = () => {
   const [customStart, setCustomStart] = useState<string>('');
   const [customEnd, setCustomEnd] = useState<string>('');
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
+  const [isUploadingDrive, setIsUploadingDrive] = useState<boolean>(false);
 
   const studentName = settings.studentName || 'BK NITHILESHVAR';
 
@@ -207,6 +211,40 @@ export const ReportsView: React.FC = () => {
     }
   };
 
+  const handleSaveToDrive = async () => {
+    if (matchingSessions.length === 0) {
+      showToast('No study records found in selected date range');
+      return;
+    }
+
+    setIsUploadingDrive(true);
+    try {
+      if (!getCachedDriveToken()) {
+        await authenticateGoogleDrive();
+      }
+
+      const report = buildProductionStudyReport({
+        studentName,
+        reportOption: filterMode,
+        dateRangeLabel: filterLabel,
+        startDateStr,
+        endDateStr,
+        sessions: matchingSessions,
+      });
+
+      const pdfArrayBuffer = report.doc.output('arraybuffer');
+      const pdfBlob = new Blob([pdfArrayBuffer], { type: 'application/pdf' });
+
+      const uploaded = await uploadPdfToDrive(report.filename, pdfBlob);
+      showToast(`PDF Report saved to Google Drive: ${uploaded.name}`);
+    } catch (err: any) {
+      console.error('Drive upload error:', err);
+      showToast(`Drive upload failed: ${err.message || 'Error'}`);
+    } finally {
+      setIsUploadingDrive(false);
+    }
+  };
+
   const handlePrint = () => {
     window.print();
   };
@@ -243,6 +281,16 @@ export const ReportsView: React.FC = () => {
             >
               <Printer className="w-4 h-4 text-amber-400" />
               PRINT REPORT
+            </button>
+
+            <button
+              onClick={handleSaveToDrive}
+              disabled={isUploadingDrive || matchingSessions.length === 0}
+              className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-bold text-emerald-300 bg-slate-900 hover:bg-slate-800 border border-emerald-500/30 transition-all shadow-md disabled:opacity-50 cursor-pointer"
+              title="Upload PDF Report directly to Google Drive"
+            >
+              <CloudUpload className="w-4 h-4 text-emerald-400" />
+              {isUploadingDrive ? 'SAVING TO DRIVE...' : 'SAVE PDF TO DRIVE'}
             </button>
 
             <button

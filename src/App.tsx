@@ -17,6 +17,7 @@ import { AnalyticsView } from './components/AnalyticsView';
 import { DailyReviewView } from './components/DailyReviewView';
 import { ReportsView } from './components/ReportsView';
 import { BackupRestoreView } from './components/BackupRestoreView';
+import { GoogleDriveView } from './components/GoogleDriveView';
 import { RemindersView } from './components/RemindersView';
 import { SettingsView } from './components/SettingsView';
 import { DiagnosticsView } from './components/DiagnosticsView';
@@ -163,6 +164,8 @@ function MainApp() {
           {activeTab === 'reports' && <ReportsView />}
 
           {activeTab === 'backup' && <BackupRestoreView />}
+
+          {activeTab === 'drive' && <GoogleDriveView />}
 
           {activeTab === 'reminders' && <RemindersView />}
 

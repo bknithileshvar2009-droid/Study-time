@@ -12,6 +12,7 @@ import {
   FileEdit,
   FileBarChart,
   Database,
+  HardDrive,
   Bell,
   Settings,
   Activity,
@@ -84,6 +85,11 @@ export const Sidebar: React.FC<SidebarProps> = ({ mobileMenuOpen, setMobileMenuO
       id: 'backup',
       label: 'Backup & Restore',
       icon: <Database className="w-4 h-4" />,
+    },
+    {
+      id: 'drive',
+      label: 'Google Drive Storage',
+      icon: <HardDrive className="w-4 h-4" />,
     },
     {
       id: 'reminders',

@@ -27,14 +27,9 @@ service cloud.firestore {
 
     function isValidSession(data, userId) {
       return data.id is string && isValidId(data.id)
-        && data.subject is string && data.subject.size() <= 100
-        && data.status in ['running', 'paused', 'completed', 'discarded']
-        && data.timerMode in ['stopwatch', 'countdown', 'pomodoro', 'custom']
-        && data.startTime is number && data.startTime >= 0
-        && data.accumulatedActiveMs is number && data.accumulatedActiveMs >= 0
-        && data.date is string && data.date.size() == 10
-        && (!('userId' in data) || data.userId == userId)
-        && (!('notes' in data) || (data.notes is string && data.notes.size() <= 5000));
+        && data.status is string
+        && data.startTime is number
+        && (!('userId' in data) || data.userId == userId);
     }
 
     function isValidSubject(data) {

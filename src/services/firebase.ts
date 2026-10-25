@@ -22,6 +22,7 @@ import {
 } from 'firebase/auth';
 import {
   getFirestore,
+  initializeFirestore,
   doc,
   getDoc,
   setDoc,
@@ -52,8 +53,18 @@ import {
 // Initialize Firebase safely
 export const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 
-/* CRITICAL: The app will break without this line */
-export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
+// Initialize Firestore with auto-detect long polling fallback for robust connection
+let firestoreInstance: ReturnType<typeof getFirestore>;
+try {
+  const dbId = (firebaseConfig as any).firestoreDatabaseId;
+  firestoreInstance = dbId
+    ? initializeFirestore(app, { experimentalAutoDetectLongPolling: true }, dbId)
+    : initializeFirestore(app, { experimentalAutoDetectLongPolling: true });
+} catch {
+  const dbId = (firebaseConfig as any).firestoreDatabaseId;
+  firestoreInstance = dbId ? getFirestore(app, dbId) : getFirestore(app);
+}
+export const db = firestoreInstance;
 export const auth = getAuth(app);
 
 // Optional RTDB initialization for backward-compatible migration
@@ -231,12 +242,21 @@ class AutoFirebaseService {
     this.statusListeners.forEach((fn) => fn(this.status));
   }
 
-  // Google Sign-in with popup
+  // Google Sign-in with popup (including Google Drive OAuth Scopes)
   public async signInWithGoogle(): Promise<User | null> {
     try {
       this.updateStatus({ isSyncing: true, syncError: null });
       const provider = new GoogleAuthProvider();
+      provider.addScope('https://www.googleapis.com/auth/drive');
+      provider.addScope('https://www.googleapis.com/auth/drive.file');
+
       const result = await signInWithPopup(auth, provider);
+      const credential = GoogleAuthProvider.credentialFromResult(result);
+      if (credential?.accessToken) {
+        const { setCachedDriveToken } = await import('./googleDrive');
+        setCachedDriveToken(credential.accessToken);
+      }
+
       this.updateStatus({
         isSyncing: false,
         isConnected: true,
@@ -254,6 +274,8 @@ class AutoFirebaseService {
 
   public async logOut(): Promise<void> {
     try {
+      const { setCachedDriveToken } = await import('./googleDrive');
+      setCachedDriveToken(null);
       await signOut(auth);
       // Re-sign in anonymously for seamless session
       await signInAnonymously(auth);

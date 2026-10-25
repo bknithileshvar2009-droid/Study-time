@@ -41,6 +41,13 @@ export const SettingsView: React.FC = () => {
     totalHoursFormatted,
     totalStudyTimeHMS,
     showToast,
+    isDriveConnected,
+    driveAutoBackupStatus,
+    lastDriveBackupMs,
+    connectDrive,
+    disconnectDrive,
+    triggerDriveAutoBackup,
+    triggerDriveAutoRestore,
   } = useStudy();
 
   const [studentNameInput, setStudentNameInput] = useState(settings.studentName || 'BK NITHILESHVAR');
@@ -510,6 +517,117 @@ export const SettingsView: React.FC = () => {
             <RefreshCw className={`w-3.5 h-3.5 ${cloudStatus.isSyncing ? 'animate-spin' : ''}`} />
             {cloudStatus.isSyncing ? 'Syncing...' : 'Force Cloud Data Refresh'}
           </button>
+        </div>
+      </div>
+
+      {/* 5.5. Google Drive Automatic Backup & Restore Panel */}
+      <div className="p-6 rounded-2xl bg-[#0c0e15] border border-blue-500/30 shadow-xl space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 rounded-xl bg-blue-500/10 border border-blue-500/20 text-blue-400">
+              <HardDrive className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="text-sm font-bold text-white tracking-wide">
+                  Google Drive Automatic Backup & Restore
+                </h3>
+                <span
+                  className={`text-[10px] uppercase font-bold px-2 py-0.5 rounded font-mono ${
+                    isDriveConnected
+                      ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                      : 'bg-slate-800 text-slate-400 border border-slate-700'
+                  }`}
+                >
+                  {isDriveConnected ? 'Connected' : 'Disconnected'}
+                </span>
+              </div>
+              <p className="text-xs text-slate-400 mt-1 leading-relaxed">
+                Automatically saves your study logs, timer states, goals, and settings to a single dedicated file (<code className="text-amber-300">StudyTrackerBackup.json</code>) on your own Google Drive account.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 self-start sm:self-center">
+            {isDriveConnected ? (
+              <button
+                onClick={() => disconnectDrive()}
+                className="px-4 py-2 rounded-xl text-xs font-bold text-rose-300 bg-rose-950/30 hover:bg-rose-900/40 border border-rose-500/30 transition-all cursor-pointer"
+              >
+                Disconnect Google Drive
+              </button>
+            ) : (
+              <button
+                onClick={() => connectDrive()}
+                className="px-4 py-2 rounded-xl text-xs font-bold text-black bg-gradient-to-r from-blue-400 to-emerald-400 hover:from-blue-300 hover:to-emerald-300 transition-all shadow-lg shadow-blue-500/20 cursor-pointer"
+              >
+                Connect Google Drive
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Live Status & Detailed Controls */}
+        <div className="p-4 rounded-xl bg-black/40 border border-slate-800 space-y-3 text-[11px]">
+          <div className="flex items-center justify-between">
+            <span className="text-slate-400 uppercase font-bold text-[9px]">Backup Target File</span>
+            <span className="font-mono text-amber-400">StudyTrackerBackup.json</span>
+          </div>
+
+          <div className="flex items-center justify-between">
+            <span className="text-slate-400 uppercase font-bold text-[9px]">Auto-Backup Live Status</span>
+            <div className="flex items-center gap-2">
+              <span
+                className={`w-2 h-2 rounded-full ${
+                  driveAutoBackupStatus === 'backed_up'
+                    ? 'bg-emerald-400'
+                    : driveAutoBackupStatus === 'backing_up'
+                    ? 'bg-amber-400 animate-spin'
+                    : driveAutoBackupStatus === 'offline'
+                    ? 'bg-amber-500'
+                    : 'bg-slate-500'
+                }`}
+              />
+              <span className="font-mono font-bold text-slate-200 uppercase">
+                {driveAutoBackupStatus === 'backed_up'
+                  ? 'Backed Up'
+                  : driveAutoBackupStatus === 'backing_up'
+                  ? 'Backing Up...'
+                  : driveAutoBackupStatus === 'offline'
+                  ? 'Offline'
+                  : driveAutoBackupStatus === 'error'
+                  ? 'Backup Failed'
+                  : 'Idle'}
+              </span>
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between">
+            <span className="text-slate-400 uppercase font-bold text-[9px]">Last Backed Up</span>
+            <span className="font-mono text-slate-300">
+              {lastDriveBackupMs ? new Date(lastDriveBackupMs).toLocaleString() : 'Never in this session'}
+            </span>
+          </div>
+
+          {isDriveConnected && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-slate-800">
+              <button
+                onClick={() => triggerDriveAutoBackup(true)}
+                className="py-2 px-3 bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-200 text-xs font-semibold rounded-xl transition-colors flex items-center justify-center gap-2 cursor-pointer"
+              >
+                <RefreshCw className="w-3.5 h-3.5 text-amber-400" />
+                <span>Create Backup Now</span>
+              </button>
+
+              <button
+                onClick={() => triggerDriveAutoRestore('merge')}
+                className="py-2 px-3 bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-200 text-xs font-semibold rounded-xl transition-colors flex items-center justify-center gap-2 cursor-pointer"
+              >
+                <Download className="w-3.5 h-3.5 text-emerald-400" />
+                <span>Restore from Drive Now</span>
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
