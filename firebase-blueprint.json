@@ -1,0 +1,345 @@
+{
+  "entities": {
+    "StudySession": {
+      "title": "StudySession",
+      "description": "Represents an individual focused study session with active and paused duration tracking.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique session identifier.",
+          "maxLength": 128
+        },
+        "userId": {
+          "type": "string",
+          "description": "UID of the owner user.",
+          "maxLength": 128
+        },
+        "subject": {
+          "type": "string",
+          "description": "Name of the subject studied.",
+          "maxLength": 100
+        },
+        "course": {
+          "type": "string",
+          "description": "Course or curriculum name.",
+          "maxLength": 100
+        },
+        "chapter": {
+          "type": "string",
+          "description": "Chapter or module name.",
+          "maxLength": 100
+        },
+        "topic": {
+          "type": "string",
+          "description": "Specific topic or lesson studied.",
+          "maxLength": 100
+        },
+        "notes": {
+          "type": "string",
+          "description": "Student notes, key learnings, or remarks.",
+          "maxLength": 5000
+        },
+        "status": {
+          "type": "string",
+          "description": "Current lifecycle status of the session.",
+          "enum": ["running", "paused", "completed", "discarded"]
+        },
+        "timerMode": {
+          "type": "string",
+          "description": "Mode used during tracking.",
+          "enum": ["stopwatch", "countdown", "pomodoro", "custom"]
+        },
+        "startTime": {
+          "type": "number",
+          "description": "Epoch timestamp in milliseconds when study session commenced."
+        },
+        "endTime": {
+          "type": "number",
+          "description": "Epoch timestamp in milliseconds when study session completed."
+        },
+        "accumulatedActiveMs": {
+          "type": "number",
+          "description": "Total net active study milliseconds excluding pauses."
+        },
+        "accumulatedBreakMs": {
+          "type": "number",
+          "description": "Total break milliseconds during the session."
+        },
+        "lastResumeTime": {
+          "type": "number",
+          "description": "Timestamp in milliseconds when session was last resumed or started."
+        },
+        "date": {
+          "type": "string",
+          "description": "Calendar date string YYYY-MM-DD.",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        },
+        "createdAt": {
+          "type": "number",
+          "description": "Timestamp in milliseconds when session record was created."
+        },
+        "updatedAt": {
+          "type": "number",
+          "description": "Timestamp in milliseconds when session record was last updated."
+        },
+        "isManualEntry": {
+          "type": "boolean",
+          "description": "Whether the record was manually entered retroactively."
+        }
+      },
+      "required": ["id", "subject", "status", "timerMode", "startTime", "accumulatedActiveMs", "date"]
+    },
+    "SubjectItem": {
+      "title": "SubjectItem",
+      "description": "Defines an academic subject with associated color code, course, and chapters.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique subject identifier.",
+          "maxLength": 128
+        },
+        "name": {
+          "type": "string",
+          "description": "Display name of the subject.",
+          "maxLength": 100
+        },
+        "color": {
+          "type": "string",
+          "description": "Hex or CSS color string for UI representation.",
+          "maxLength": 32
+        },
+        "course": {
+          "type": "string",
+          "description": "Course or syllabus name.",
+          "maxLength": 100
+        },
+        "createdAt": {
+          "type": "number",
+          "description": "Creation timestamp in milliseconds."
+        }
+      },
+      "required": ["id", "name", "color"]
+    },
+    "StudyGoal": {
+      "title": "StudyGoal",
+      "description": "Target study duration goal set for a period or subject.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique goal identifier.",
+          "maxLength": 128
+        },
+        "title": {
+          "type": "string",
+          "description": "Title or description of the goal.",
+          "maxLength": 150
+        },
+        "type": {
+          "type": "string",
+          "description": "Goal cadence or scope.",
+          "enum": ["daily", "weekly", "monthly", "subject", "chapter"]
+        },
+        "targetHours": {
+          "type": "number",
+          "description": "Target study hours."
+        },
+        "subject": {
+          "type": "string",
+          "description": "Target subject if scoped to subject.",
+          "maxLength": 100
+        },
+        "chapter": {
+          "type": "string",
+          "description": "Target chapter if scoped to chapter.",
+          "maxLength": 100
+        },
+        "startDate": {
+          "type": "string",
+          "description": "Start date in YYYY-MM-DD format.",
+          "maxLength": 32
+        },
+        "endDate": {
+          "type": "string",
+          "description": "End date in YYYY-MM-DD format.",
+          "maxLength": 32
+        },
+        "createdAt": {
+          "type": "number",
+          "description": "Creation timestamp in milliseconds."
+        }
+      },
+      "required": ["id", "title", "type", "targetHours"]
+    },
+    "DailyReview": {
+      "title": "DailyReview",
+      "description": "Daily reflection, productivity rating, and battle plan.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Identifier, typically matching the date string.",
+          "maxLength": 64
+        },
+        "date": {
+          "type": "string",
+          "description": "Calendar date string YYYY-MM-DD.",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        },
+        "rating": {
+          "type": "number",
+          "description": "Productivity rating from 1 to 5 stars."
+        },
+        "reflection": {
+          "type": "string",
+          "description": "Journal notes and reflection on study performance.",
+          "maxLength": 5000
+        },
+        "tomorrowPlan": {
+          "type": "string",
+          "description": "Priorities and planned goals for tomorrow.",
+          "maxLength": 5000
+        },
+        "createdAt": {
+          "type": "number",
+          "description": "Creation timestamp in milliseconds."
+        },
+        "updatedAt": {
+          "type": "number",
+          "description": "Last update timestamp in milliseconds."
+        }
+      },
+      "required": ["id", "date", "rating"]
+    },
+    "UserSettings": {
+      "title": "UserSettings",
+      "description": "Preferences, target defaults, and student profile configuration.",
+      "type": "object",
+      "properties": {
+        "studentName": {
+          "type": "string",
+          "description": "Name of the student for reports and interface.",
+          "maxLength": 100
+        },
+        "dailyGoalHours": {
+          "type": "number",
+          "description": "Daily target study hours."
+        },
+        "weeklyGoalHours": {
+          "type": "number",
+          "description": "Weekly target study hours."
+        },
+        "monthlyGoalHours": {
+          "type": "number",
+          "description": "Monthly target study hours."
+        },
+        "defaultSubject": {
+          "type": "string",
+          "description": "Default subject preselected in timer.",
+          "maxLength": 100
+        },
+        "defaultTimerMode": {
+          "type": "string",
+          "description": "Default timer mode.",
+          "enum": ["stopwatch", "countdown", "pomodoro", "custom"]
+        },
+        "pomodoroWorkMin": {
+          "type": "number",
+          "description": "Focus work duration in minutes."
+        },
+        "pomodoroShortBreakMin": {
+          "type": "number",
+          "description": "Short break duration in minutes."
+        },
+        "pomodoroLongBreakMin": {
+          "type": "number",
+          "description": "Long break duration in minutes."
+        },
+        "pomodoroSessionsBeforeLongBreak": {
+          "type": "number",
+          "description": "Number of work sessions before long break."
+        },
+        "idleDetectionMin": {
+          "type": "number",
+          "description": "Minutes of inactivity before triggering alert."
+        },
+        "soundEnabled": {
+          "type": "boolean",
+          "description": "Whether audio cues are enabled."
+        },
+        "autoSaveCloud": {
+          "type": "boolean",
+          "description": "Whether cloud synchronization is active."
+        },
+        "themeAccent": {
+          "type": "string",
+          "description": "Theme accent palette.",
+          "enum": ["crimson-gold", "pure-gold", "crimson-noir"]
+        }
+      },
+      "required": ["studentName", "dailyGoalHours", "defaultSubject"]
+    },
+    "BackupSnapshot": {
+      "title": "BackupSnapshot",
+      "description": "Complete frozen state snapshot of the study database.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique snapshot identifier.",
+          "maxLength": 128
+        },
+        "timestamp": {
+          "type": "number",
+          "description": "Snapshot creation timestamp."
+        },
+        "label": {
+          "type": "string",
+          "description": "Human-readable label or description.",
+          "maxLength": 200
+        },
+        "sessionsCount": {
+          "type": "number",
+          "description": "Number of sessions in snapshot."
+        },
+        "totalHours": {
+          "type": "number",
+          "description": "Total study hours captured in snapshot."
+        },
+        "dataJson": {
+          "type": "string",
+          "description": "Serialized JSON snapshot payload."
+        }
+      },
+      "required": ["id", "timestamp", "label", "sessionsCount", "dataJson"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}/sessions/{sessionId}": {
+      "schema": "StudySession",
+      "description": "User's individual study sessions."
+    },
+    "/users/{userId}/subjects/{subjectId}": {
+      "schema": "SubjectItem",
+      "description": "User's academic subjects."
+    },
+    "/users/{userId}/goals/{goalId}": {
+      "schema": "StudyGoal",
+      "description": "User's target study goals."
+    },
+    "/users/{userId}/dailyReviews/{reviewId}": {
+      "schema": "DailyReview",
+      "description": "User's daily review and reflections."
+    },
+    "/users/{userId}/settings/{settingsId}": {
+      "schema": "UserSettings",
+      "description": "User's app preferences and student identity."
+    },
+    "/users/{userId}/snapshots/{snapshotId}": {
+      "schema": "BackupSnapshot",
+      "description": "User's backup snapshots."
+    }
+  }
+}

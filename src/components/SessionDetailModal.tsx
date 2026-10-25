@@ -8,6 +8,7 @@ import {
   getDailyAllocations,
 } from '../utils/timeFormat';
 import { X, Clock, Calendar, BookOpen, PauseCircle, PlayCircle, FileText, CheckCircle2 } from 'lucide-react';
+import { TagBadge } from './TagBadge';
 
 interface SessionDetailModalProps {
   session: StudySession | null;
@@ -144,6 +145,20 @@ export const SessionDetailModal: React.FC<SessionDetailModalProps> = ({
                   <span>{formatDateDisplay(day)}:</span>
                   <span className="font-bold text-amber-300">{formatDurationHMS(ms)}</span>
                 </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Tags */}
+        {session.tags && session.tags.length > 0 && (
+          <div className="mt-4">
+            <label className="text-xs font-semibold uppercase tracking-wider text-slate-400 block mb-1.5">
+              Tags
+            </label>
+            <div className="flex flex-wrap gap-1.5">
+              {session.tags.map((t) => (
+                <TagBadge key={t} tag={t} size="sm" />
               ))}
             </div>
           </div>

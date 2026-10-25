@@ -1,6 +1,6 @@
 {
-  "name": "Chronos Study - Precision Study Time Tracker",
-  "description": "Professional standalone study time tracking application with persistent session history, multi-device sync, and PDF reports.",
+  "name": "BK NITHILESHVAR — STUDY TIME TRACKER",
+  "description": "Production-grade personal study time and performance tracking application with multi-mode timers, chapter analytics, goals, calendar, and professional PDF reports.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

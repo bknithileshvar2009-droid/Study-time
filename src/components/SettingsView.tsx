@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useStudy } from '../context/StudyContext';
 import { ConfirmModal } from './ConfirmModal';
-import { AuthModal } from './AuthModal';
+import { TagBadge } from './TagBadge';
 import {
   User,
   Target,
@@ -19,6 +19,8 @@ import {
   AlertTriangle,
   RefreshCw,
   Sparkles,
+  Tag as TagIcon,
+  Award,
 } from 'lucide-react';
 
 export const SettingsView: React.FC = () => {
@@ -27,23 +29,25 @@ export const SettingsView: React.FC = () => {
     updateSettings,
     sessions,
     clearAllHistory,
-    importData,
+    importFullData,
     cloudStatus,
-    syncWithCloud,
+    triggerManualCloudSync,
+    totalHoursFormatted,
+    totalStudyTimeHMS,
     showToast,
   } = useStudy();
 
-  const [studentNameInput, setStudentNameInput] = useState(settings.studentName);
+  const [studentNameInput, setStudentNameInput] = useState(settings.studentName || 'BK NITHILESHVAR');
   const [dailyGoalInput, setDailyGoalInput] = useState(settings.dailyGoalHours);
   const [newSubjectInput, setNewSubjectInput] = useState('');
+  const [newTagInput, setNewTagInput] = useState('');
   const [isClearModalOpen, setIsClearModalOpen] = useState(false);
-  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
 
   // Handle Save Student Name & Goals
   const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
     await updateSettings({
-      studentName: studentNameInput.trim() || 'Student',
+      studentName: studentNameInput.trim() || 'BK NITHILESHVAR',
       dailyGoalHours: Math.max(0.5, Math.min(24, dailyGoalInput)),
     });
   };
@@ -71,13 +75,36 @@ export const SettingsView: React.FC = () => {
     await updateSettings({ subjectPresets: updated });
   };
 
+  // Add Tag Preset
+  const handleAddTag = async () => {
+    if (!newTagInput.trim()) return;
+    const clean = newTagInput.replace(/^#/, '').toLowerCase().trim();
+    if (settings.tagPresets.includes(clean)) {
+      showToast('Tag preset already exists');
+      return;
+    }
+    const updated = [...settings.tagPresets, clean];
+    await updateSettings({ tagPresets: updated });
+    setNewTagInput('');
+  };
+
+  // Delete Tag Preset
+  const handleDeleteTag = async (tagToDelete: string) => {
+    if (settings.tagPresets.length <= 1) {
+      showToast('At least one tag preset is required');
+      return;
+    }
+    const updated = settings.tagPresets.filter((t) => t !== tagToDelete);
+    await updateSettings({ tagPresets: updated });
+  };
+
   // Export JSON Backup
   const handleExportJSON = () => {
     const backupData = {
       app: 'Chronos Study Time Tracker',
       version: '1.0',
       exportedAt: new Date().toISOString(),
-      studentName: settings.studentName,
+      studentName: settings.studentName || 'BK NITHILESHVAR',
       settings,
       sessions,
     };
@@ -102,14 +129,13 @@ export const SettingsView: React.FC = () => {
       try {
         const content = event.target?.result as string;
         const parsed = JSON.parse(content);
-        if (parsed && Array.isArray(parsed.sessions)) {
-          await importData(parsed.sessions, parsed.settings, 'merge');
-        } else if (Array.isArray(parsed)) {
-          await importData(parsed, undefined, 'merge');
+        if (parsed) {
+          const res = await importFullData(parsed, 'merge');
+          showToast(`Imported ${res.addedSessions} sessions successfully`);
         } else {
           showToast('Invalid backup file structure');
         }
-      } catch (err) {
+      } catch {
         showToast('Failed to parse backup JSON');
       }
     };
@@ -119,16 +145,27 @@ export const SettingsView: React.FC = () => {
 
   return (
     <div className="max-w-4xl mx-auto space-y-6 animate-in fade-in duration-300">
-      <div>
-        <span className="text-xs uppercase font-bold tracking-widest text-amber-400">
-          Preferences & Persistence
-        </span>
-        <h2 className="text-2xl font-bold text-white tracking-tight font-display">
-          Application Settings
-        </h2>
-        <p className="text-xs text-slate-400 mt-0.5">
-          Configure report identification, daily target hours, subject presets, and storage sync.
-        </p>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div>
+          <span className="text-xs uppercase font-bold tracking-widest text-amber-400">
+            Preferences & Persistence
+          </span>
+          <h2 className="text-2xl font-bold text-white tracking-tight font-display">
+            Application Settings
+          </h2>
+          <p className="text-xs text-slate-400 mt-0.5">
+            Configure report identity, study goals, #tags, subject presets, and auto-sync.
+          </p>
+        </div>
+
+        {/* Total Hours Badge */}
+        <div className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-amber-500/10 to-rose-500/10 border border-amber-500/30 flex items-center gap-2">
+          <Award className="w-4 h-4 text-amber-400" />
+          <div className="text-xs">
+            <span className="text-slate-400">Total Hours Studied: </span>
+            <span className="font-mono font-bold text-amber-300">{totalHoursFormatted}</span>
+          </div>
+        </div>
       </div>
 
       {/* 1. Student Identity & PDF Header Profile */}
@@ -139,10 +176,10 @@ export const SettingsView: React.FC = () => {
           </div>
           <div>
             <h3 className="text-sm font-bold text-white tracking-wide">
-              Student Identification & Report Profile
+              Official Student Report Identity
             </h3>
             <p className="text-xs text-slate-400">
-              The display name configured here appears on all official PDF study reports.
+              The student name printed on the first page, headers, and running footers of all PDF study reports.
             </p>
           </div>
         </div>
@@ -150,14 +187,14 @@ export const SettingsView: React.FC = () => {
         <form onSubmit={handleSaveProfile} className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
           <div>
             <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1.5">
-              Student Display Name
+              Certified Student Name
             </label>
             <input
               type="text"
               value={studentNameInput}
               onChange={(e) => setStudentNameInput(e.target.value)}
-              placeholder="e.g. John Doe, Alex Mercer"
-              className="w-full px-3.5 py-2.5 bg-black/50 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-amber-500/60"
+              placeholder="BK NITHILESHVAR"
+              className="w-full px-3.5 py-2.5 bg-black/50 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-amber-500/60 font-semibold"
             />
           </div>
 
@@ -187,7 +224,67 @@ export const SettingsView: React.FC = () => {
         </form>
       </div>
 
-      {/* 2. Subjects Management */}
+      {/* 2. Tag Presets Management */}
+      <div className="p-6 rounded-2xl bg-[#0c0e15] border border-slate-800/80 space-y-4">
+        <div className="flex items-center gap-3">
+          <div className="p-2.5 rounded-xl bg-slate-900 border border-slate-800 text-amber-400">
+            <TagIcon className="w-5 h-5" />
+          </div>
+          <div>
+            <h3 className="text-sm font-bold text-white tracking-wide">
+              Tag Presets (#urgent, #review, #exam-prep)
+            </h3>
+            <p className="text-xs text-slate-400">
+              Quick clickable tags available when starting, inspecting, or filtering study sessions.
+            </p>
+          </div>
+        </div>
+
+        {/* Existing Tag Presets */}
+        <div className="flex flex-wrap gap-2 pt-2">
+          {settings.tagPresets.map((tag) => (
+            <div
+              key={tag}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800 text-xs text-slate-200 font-mono"
+            >
+              <span className="text-amber-400">#</span>
+              <span>{tag}</span>
+              <button
+                onClick={() => handleDeleteTag(tag)}
+                className="text-slate-500 hover:text-red-400 p-0.5 rounded transition-colors"
+                title={`Remove #${tag}`}
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          ))}
+        </div>
+
+        {/* Add new tag preset input */}
+        <div className="flex items-center gap-2 pt-2">
+          <input
+            type="text"
+            value={newTagInput}
+            onChange={(e) => setNewTagInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                handleAddTag();
+              }
+            }}
+            placeholder="Add new tag (e.g. lab-work, flashcards)..."
+            className="flex-1 px-3.5 py-2 bg-black/50 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-amber-500/60 font-mono"
+          />
+          <button
+            onClick={handleAddTag}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold text-slate-200 bg-slate-800 hover:bg-slate-700 transition-colors"
+          >
+            <Plus className="w-3.5 h-3.5" /> Add Tag
+          </button>
+        </div>
+      </div>
+
+      {/* 3. Subjects Management */}
       <div className="p-6 rounded-2xl bg-[#0c0e15] border border-slate-800/80 space-y-4">
         <div className="flex items-center gap-3">
           <div className="p-2.5 rounded-xl bg-slate-900 border border-slate-800 text-amber-400">
@@ -203,7 +300,6 @@ export const SettingsView: React.FC = () => {
           </div>
         </div>
 
-        {/* Existing Subject Tags */}
         <div className="flex flex-wrap gap-2 pt-2">
           {settings.subjectPresets.map((subject) => (
             <div
@@ -222,7 +318,6 @@ export const SettingsView: React.FC = () => {
           ))}
         </div>
 
-        {/* Add new subject input */}
         <div className="flex items-center gap-2 pt-2">
           <input
             type="text"
@@ -246,7 +341,7 @@ export const SettingsView: React.FC = () => {
         </div>
       </div>
 
-      {/* 3. Audio & Feedback */}
+      {/* 4. Audio & Feedback */}
       <div className="p-6 rounded-2xl bg-[#0c0e15] border border-slate-800/80 space-y-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -278,63 +373,60 @@ export const SettingsView: React.FC = () => {
         </div>
       </div>
 
-      {/* 4. Storage Architecture & Cloud Sync */}
+      {/* 5. Automatic Firebase RTDB Sync (No Login Needed) */}
       <div className="p-6 rounded-2xl bg-[#0c0e15] border border-slate-800/80 space-y-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="p-2.5 rounded-xl bg-slate-900 border border-slate-800 text-amber-400">
+            <div className="p-2.5 rounded-xl bg-emerald-950/40 border border-emerald-500/30 text-emerald-400">
               <Cloud className="w-5 h-5" />
             </div>
             <div>
               <h3 className="text-sm font-bold text-white tracking-wide">
-                Storage & Synchronization Architecture
+                Automatic Firebase Cloud Persistence
               </h3>
               <p className="text-xs text-slate-400">
-                Reliable IndexedDB browser storage + Firebase Realtime Database
+                Sessions automatically save to Firebase Realtime Database and IndexedDB with zero login required.
               </p>
             </div>
           </div>
 
           <button
-            onClick={() => setIsAuthModalOpen(true)}
-            className="px-3.5 py-1.5 rounded-xl text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-amber-300 border border-amber-500/30 transition-colors"
+            onClick={() => triggerManualCloudSync()}
+            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-semibold bg-emerald-950/40 hover:bg-emerald-900/50 text-emerald-300 border border-emerald-500/30 transition-colors"
           >
-            {cloudStatus.user ? 'Manage Sync' : 'Connect Cloud'}
+            <RefreshCw className="w-3.5 h-3.5" /> Force Sync Now
           </button>
         </div>
 
         <div className="p-4 rounded-xl bg-black/40 border border-slate-800/80 space-y-2 text-xs text-slate-300">
           <div className="flex items-center justify-between">
-            <span className="text-slate-400">Local Storage Engine:</span>
-            <span className="font-semibold text-emerald-400">Browser IndexedDB (Active & Permanent)</span>
-          </div>
-          <div className="flex items-center justify-between">
-            <span className="text-slate-400">Cloud Sync (Firebase RTDB):</span>
-            <span className={`font-semibold ${cloudStatus.user ? 'text-emerald-400' : 'text-amber-400'}`}>
-              {cloudStatus.user
-                ? `Connected (${cloudStatus.user.isAnonymous ? '1-Click Anonymous' : cloudStatus.user.email})`
-                : 'Local Only (Click "Connect Cloud" for multi-device sync)'}
+            <span className="text-slate-400">Cloud Backend:</span>
+            <span className="font-semibold text-emerald-400">
+              gen-lang-client-0079533925 (Realtime Database Connected)
             </span>
           </div>
           <div className="flex items-center justify-between">
-            <span className="text-slate-400">Total Saved Sessions:</span>
-            <span className="font-mono text-white font-bold">{sessions.length} records</span>
+            <span className="text-slate-400">Local Cache:</span>
+            <span className="font-semibold text-emerald-400">IndexedDB & LocalStorage Active</span>
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-slate-400">Historical Records:</span>
+            <span className="font-mono text-white font-bold">{sessions.length} saved sessions</span>
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-slate-400">Total Hours Studied:</span>
+            <span className="font-mono text-amber-300 font-bold">{totalHoursFormatted} ({totalStudyTimeHMS})</span>
           </div>
         </div>
-
-        <p className="text-[11px] text-slate-400 leading-relaxed">
-          <strong>Storage Architecture Notice:</strong> Browser IndexedDB ensures your session history, timers, and reports survive browser reloads, system reboots, and page switches with zero server costs. Connecting to Firebase Realtime Database enables instant backup across multiple devices (e.g. your phone and laptop).
-        </p>
       </div>
 
-      {/* 5. Data Backup, Export & Reset */}
+      {/* 6. Data Backup & Export */}
       <div className="p-6 rounded-2xl bg-[#0c0e15] border border-slate-800/80 space-y-4">
         <h3 className="text-sm font-bold text-white tracking-wide">
           Data Backup & Maintenance
         </h3>
 
         <div className="flex flex-wrap items-center gap-3">
-          {/* JSON Export */}
           <button
             onClick={handleExportJSON}
             className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-semibold text-slate-200 bg-slate-900 hover:bg-slate-800 border border-slate-800 transition-colors"
@@ -343,7 +435,6 @@ export const SettingsView: React.FC = () => {
             Export JSON Backup
           </button>
 
-          {/* JSON Import */}
           <label className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-semibold text-slate-200 bg-slate-900 hover:bg-slate-800 border border-slate-800 transition-colors cursor-pointer">
             <Upload className="w-4 h-4 text-emerald-400" />
             Import JSON Backup
@@ -355,7 +446,6 @@ export const SettingsView: React.FC = () => {
             />
           </label>
 
-          {/* Clear All Data */}
           <button
             onClick={() => setIsClearModalOpen(true)}
             className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-semibold text-rose-400 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/20 transition-colors ml-auto"
@@ -370,7 +460,7 @@ export const SettingsView: React.FC = () => {
       <ConfirmModal
         isOpen={isClearModalOpen}
         title="Clear All Study History?"
-        message="Are you sure you want to delete all historical study sessions? This will permanently erase all local records and cannot be undone."
+        message="Are you sure you want to delete all historical study sessions? This will permanently erase all local and cloud records."
         confirmLabel="Yes, Clear All History"
         cancelLabel="Cancel"
         isDestructive={true}
@@ -380,8 +470,6 @@ export const SettingsView: React.FC = () => {
         }}
         onCancel={() => setIsClearModalOpen(false)}
       />
-
-      <AuthModal isOpen={isAuthModalOpen} onClose={() => setIsAuthModalOpen(false)} />
     </div>
   );
 };

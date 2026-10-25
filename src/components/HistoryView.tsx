@@ -11,6 +11,7 @@ import {
   getDailyAllocations,
 } from '../utils/timeFormat';
 import { ConfirmModal } from './ConfirmModal';
+import { TagBadge } from './TagBadge';
 import {
   Search,
   Filter,
@@ -24,11 +25,14 @@ import {
   Layers,
   Sparkles,
   AlertCircle,
+  Tag as TagIcon,
+  Award,
 } from 'lucide-react';
 
 interface HistoryViewProps {
   onInspectSession: (session: StudySession) => void;
   onEditSession: (session: StudySession) => void;
+  onOpenManualEntry?: () => void;
 }
 
 type DateFilterOption = 'all' | 'today' | 'yesterday' | 'last7' | 'last30' | 'thisMonth' | 'custom';
@@ -36,11 +40,13 @@ type DateFilterOption = 'all' | 'today' | 'yesterday' | 'last7' | 'last30' | 'th
 export const HistoryView: React.FC<HistoryViewProps> = ({
   onInspectSession,
   onEditSession,
+  onOpenManualEntry,
 }) => {
-  const { sessions, deleteSession, stats, settings } = useStudy();
+  const { sessions, deleteSession, stats, totalHoursFormatted, totalStudyTimeHMS, settings } = useStudy();
 
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedSubject, setSelectedSubject] = useState<string>('all');
+  const [selectedTag, setSelectedTag] = useState<string>('all');
   const [dateFilter, setDateFilter] = useState<DateFilterOption>('all');
   const [customStartDate, setCustomStartDate] = useState('');
   const [customEndDate, setCustomEndDate] = useState('');
@@ -54,6 +60,17 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
     });
     return Array.from(set).sort();
   }, [sessions]);
+
+  // Available tags across all sessions & presets
+  const availableTags = useMemo(() => {
+    const set = new Set<string>(settings.tagPresets.map((t) => t.replace(/^#/, '').toLowerCase()));
+    sessions.forEach((s) => {
+      if (s.tags) {
+        s.tags.forEach((t) => set.add(t.replace(/^#/, '').toLowerCase()));
+      }
+    });
+    return Array.from(set).sort();
+  }, [sessions, settings.tagPresets]);
 
   // Filtered Sessions
   const filteredSessions = useMemo(() => {
@@ -69,15 +86,24 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
         return false;
       }
 
-      // 2. Search query (subject or notes)
-      if (searchQuery.trim()) {
-        const q = searchQuery.toLowerCase();
-        const subjectMatch = (s.subject || '').toLowerCase().includes(q);
-        const notesMatch = (s.notes || '').toLowerCase().includes(q);
-        if (!subjectMatch && !notesMatch) return false;
+      // 2. Tag filter
+      if (selectedTag !== 'all') {
+        const cleanTag = selectedTag.replace(/^#/, '').toLowerCase();
+        if (!s.tags || !s.tags.some((t) => t.replace(/^#/, '').toLowerCase() === cleanTag)) {
+          return false;
+        }
       }
 
-      // 3. Date filter
+      // 3. Search query (subject, notes, or tags)
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase().replace(/^#/, '');
+        const subjectMatch = (s.subject || '').toLowerCase().includes(q);
+        const notesMatch = (s.notes || '').toLowerCase().includes(q);
+        const tagMatch = s.tags ? s.tags.some((t) => t.toLowerCase().includes(q)) : false;
+        if (!subjectMatch && !notesMatch && !tagMatch) return false;
+      }
+
+      // 4. Date filter
       const sessionDate = s.date || getLocalDateString(s.startTime);
 
       if (dateFilter === 'today') {
@@ -100,7 +126,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
 
       return true;
     });
-  }, [sessions, selectedSubject, searchQuery, dateFilter, customStartDate, customEndDate]);
+  }, [sessions, selectedSubject, selectedTag, searchQuery, dateFilter, customStartDate, customEndDate]);
 
   // Group filtered sessions by date
   const groupedByDate = useMemo(() => {
@@ -117,7 +143,6 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
 
     sortedDates.forEach((dateStr) => {
       const items = map.get(dateStr)!;
-      // Calculate daily total from items
       const totalMs = items.reduce((acc, s) => acc + s.accumulatedActiveMs, 0);
       groups.push({
         date: dateStr,
@@ -147,27 +172,52 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
             Study Session History
           </h2>
           <p className="text-xs text-slate-400 mt-0.5">
-            Full chronological archive of genuine study sessions, durations, and notes.
+            Full chronological archive with #tagging, search, and accurate duration calculations.
           </p>
         </div>
 
         <div className="flex items-center gap-3">
           <div className="px-3.5 py-2 rounded-xl bg-slate-900 border border-slate-800 text-xs">
-            <span className="text-slate-400">Total Filtered: </span>
+            <span className="text-slate-400">Filtered: </span>
             <span className="font-mono font-bold text-amber-300">
               {formatDurationHuman(totalFilteredMs)}
             </span>{' '}
             <span className="text-slate-500 font-mono">({filteredSessions.length} sessions)</span>
           </div>
+
+          {onOpenManualEntry && (
+            <button
+              onClick={onOpenManualEntry}
+              className="px-3.5 py-2 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-black text-xs font-bold rounded-xl shadow-md transition-all flex items-center gap-1.5"
+            >
+              <span>+ Log Past Session</span>
+            </button>
+          )}
         </div>
       </div>
 
-      {/* Aggregate KPI Strip */}
+      {/* Aggregate KPI Strip - Highlighting Total Hours Till Now */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div className="p-3.5 rounded-xl bg-gradient-to-br from-[#121522] to-[#0c0e17] border border-amber-500/40">
+          <div className="text-[11px] text-amber-400 font-semibold flex items-center justify-between">
+            <span>Total Studied Till Now</span>
+            <Award className="w-3.5 h-3.5 text-amber-400" />
+          </div>
+          <div className="text-xl font-bold font-mono text-amber-300 mt-0.5">
+            {totalHoursFormatted}
+          </div>
+          <div className="text-[10px] text-slate-400 font-mono mt-0.5">
+            {totalStudyTimeHMS}
+          </div>
+        </div>
+
         <div className="p-3.5 rounded-xl bg-[#0b0d14] border border-slate-800/90">
           <div className="text-[11px] text-slate-400 font-medium">Today's Total</div>
           <div className="text-lg font-bold font-mono text-white mt-0.5">
             {formatDurationHMS(stats.todayTotalMs)}
+          </div>
+          <div className="text-[10px] text-slate-500 mt-0.5">
+            {formatDurationHuman(stats.todayTotalMs)}
           </div>
         </div>
 
@@ -176,19 +226,18 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
           <div className="text-lg font-bold font-mono text-white mt-0.5">
             {formatDurationHuman(stats.weekTotalMs)}
           </div>
-        </div>
-
-        <div className="p-3.5 rounded-xl bg-[#0b0d14] border border-slate-800/90">
-          <div className="text-[11px] text-slate-400 font-medium">Last 30 Days</div>
-          <div className="text-lg font-bold font-mono text-white mt-0.5">
-            {formatDurationHuman(stats.monthTotalMs)}
+          <div className="text-[10px] text-slate-500 mt-0.5">
+            Last 30d: {formatDurationHuman(stats.monthTotalMs)}
           </div>
         </div>
 
         <div className="p-3.5 rounded-xl bg-[#0b0d14] border border-slate-800/90">
-          <div className="text-[11px] text-slate-400 font-medium">All-Time Total</div>
-          <div className="text-lg font-bold font-mono text-amber-400 mt-0.5">
-            {(stats.allTimeTotalMs / 3600000).toFixed(1)} hrs
+          <div className="text-[11px] text-slate-400 font-medium">Total Saved Sessions</div>
+          <div className="text-lg font-bold font-mono text-white mt-0.5">
+            {stats.totalSessionsCount}
+          </div>
+          <div className="text-[10px] text-emerald-400 mt-0.5">
+            Auto Firebase Synced
           </div>
         </div>
       </div>
@@ -203,7 +252,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search subjects or notes..."
+              placeholder="Search subjects, notes, #tags..."
               className="w-full pl-9 pr-3 py-2 bg-black/50 border border-slate-800 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-500/60"
             />
           </div>
@@ -219,6 +268,22 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
               {availableSubjects.map((sub) => (
                 <option key={sub} value={sub}>
                   {sub}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Tag Filter */}
+          <div>
+            <select
+              value={selectedTag}
+              onChange={(e) => setSelectedTag(e.target.value)}
+              className="w-full px-3 py-2 bg-black/50 border border-slate-800 rounded-xl text-xs text-slate-200 focus:outline-none focus:border-amber-500/60"
+            >
+              <option value="all">All Tags (Filter by #tag)</option>
+              {availableTags.map((tag) => (
+                <option key={tag} value={tag}>
+                  #{tag}
                 </option>
               ))}
             </select>
@@ -240,24 +305,56 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
               <option value="custom">Custom Date Range...</option>
             </select>
           </div>
+        </div>
 
-          {/* Clear Filters Reset */}
-          <div className="flex items-center gap-2">
-            {(searchQuery || selectedSubject !== 'all' || dateFilter !== 'all') && (
+        {/* Quick Tag Pills Filter Strip */}
+        <div className="flex flex-wrap items-center gap-1.5 pt-1">
+          <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider mr-1 flex items-center gap-1">
+            <TagIcon className="w-3 h-3 text-amber-400" /> Filter by Tag:
+          </span>
+          <button
+            onClick={() => setSelectedTag('all')}
+            className={`text-xs px-2.5 py-0.5 rounded-lg border font-mono transition-colors ${
+              selectedTag === 'all'
+                ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 font-semibold'
+                : 'bg-slate-900/60 text-slate-400 hover:text-white border-slate-800'
+            }`}
+          >
+            All Tags
+          </button>
+          {availableTags.map((tag) => {
+            const isSelected = selectedTag === tag;
+            return (
               <button
-                onClick={() => {
-                  setSearchQuery('');
-                  setSelectedSubject('all');
-                  setDateFilter('all');
-                  setCustomStartDate('');
-                  setCustomEndDate('');
-                }}
-                className="w-full py-2 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs text-slate-300 font-medium transition-colors"
+                key={tag}
+                onClick={() => setSelectedTag(isSelected ? 'all' : tag)}
+                className={`text-xs px-2.5 py-0.5 rounded-lg border font-mono transition-colors flex items-center gap-1 ${
+                  isSelected
+                    ? 'bg-amber-500/25 text-amber-300 border-amber-500/50 shadow-sm font-semibold'
+                    : 'bg-slate-900/60 text-slate-400 hover:text-white border-slate-800'
+                }`}
               >
-                Reset Filters
+                <span>#</span>
+                <span>{tag}</span>
               </button>
-            )}
-          </div>
+            );
+          })}
+
+          {(searchQuery || selectedSubject !== 'all' || selectedTag !== 'all' || dateFilter !== 'all') && (
+            <button
+              onClick={() => {
+                setSearchQuery('');
+                setSelectedSubject('all');
+                setSelectedTag('all');
+                setDateFilter('all');
+                setCustomStartDate('');
+                setCustomEndDate('');
+              }}
+              className="text-xs px-2.5 py-0.5 rounded-lg bg-rose-500/10 text-rose-300 hover:bg-rose-500/20 border border-rose-500/20 font-medium ml-auto"
+            >
+              Reset Filters
+            </button>
+          )}
         </div>
 
         {/* Custom Date Range Pickers (if chosen) */}
@@ -286,7 +383,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
         <div className="p-12 text-center rounded-2xl bg-[#0a0c13] border border-slate-800/80 space-y-2">
           <Clock className="w-8 h-8 text-slate-600 mx-auto" />
           <p className="text-xs text-slate-400">No study sessions match your filter criteria.</p>
-          <p className="text-[11px] text-slate-600">Try adjusting your search query or date range.</p>
+          <p className="text-[11px] text-slate-600">Try adjusting your #tags, search query, or date range.</p>
         </div>
       ) : (
         <div className="space-y-6">
@@ -325,14 +422,14 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
                       key={session.id}
                       className="p-4 hover:bg-slate-900/30 transition-colors flex flex-col sm:flex-row sm:items-center justify-between gap-4 group"
                     >
-                      {/* Left: Info */}
+                      {/* Left: Info & Tags */}
                       <div className="flex items-start gap-3.5">
                         <div className="p-2.5 rounded-xl bg-slate-900 border border-slate-800 text-amber-400 group-hover:border-amber-500/30 transition-colors shrink-0 mt-0.5">
                           <BookOpen className="w-4 h-4" />
                         </div>
 
                         <div className="space-y-1">
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-2 flex-wrap">
                             <span className="text-xs font-bold text-white">
                               {session.subject || 'General Study'}
                             </span>
@@ -347,6 +444,20 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
                             >
                               {session.status}
                             </span>
+
+                            {/* Tags */}
+                            {session.tags && session.tags.length > 0 && (
+                              <div className="flex items-center gap-1 flex-wrap">
+                                {session.tags.map((t) => (
+                                  <TagBadge
+                                    key={t}
+                                    tag={t}
+                                    size="xs"
+                                    onClick={() => setSelectedTag(t.replace(/^#/, ''))}
+                                  />
+                                ))}
+                              </div>
+                            )}
                           </div>
 
                           <div className="text-[11px] text-slate-400 flex flex-wrap items-center gap-3">
@@ -393,7 +504,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
                           <button
                             onClick={() => onEditSession(session)}
                             className="p-2 text-slate-400 hover:text-amber-400 hover:bg-slate-800 rounded-lg transition-colors"
-                            title="Edit Session"
+                            title="Edit Session & Tags"
                           >
                             <Edit2 className="w-4 h-4" />
                           </button>

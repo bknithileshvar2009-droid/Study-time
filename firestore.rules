@@ -1,0 +1,140 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Default-deny safety net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Connection test probe
+    match /test/connection {
+      allow read: if true;
+    }
+
+    // Global Primitives
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isValidSession(data, userId) {
+      return data.id is string && isValidId(data.id)
+        && data.subject is string && data.subject.size() <= 100
+        && data.status in ['running', 'paused', 'completed', 'discarded']
+        && data.timerMode in ['stopwatch', 'countdown', 'pomodoro', 'custom']
+        && data.startTime is number && data.startTime >= 0
+        && data.accumulatedActiveMs is number && data.accumulatedActiveMs >= 0
+        && data.date is string && data.date.size() == 10
+        && (!('userId' in data) || data.userId == userId)
+        && (!('notes' in data) || (data.notes is string && data.notes.size() <= 5000));
+    }
+
+    function isValidSubject(data) {
+      return data.id is string && isValidId(data.id)
+        && data.name is string && data.name.size() > 0 && data.name.size() <= 100
+        && data.color is string && data.color.size() <= 32;
+    }
+
+    function isValidGoal(data) {
+      return data.id is string && isValidId(data.id)
+        && data.title is string && data.title.size() > 0 && data.title.size() <= 150
+        && data.type in ['daily', 'weekly', 'monthly', 'subject', 'chapter']
+        && data.targetHours is number && data.targetHours >= 0;
+    }
+
+    function isValidReview(data) {
+      return data.id is string && isValidId(data.id)
+        && data.date is string && data.date.size() == 10
+        && data.rating is number && data.rating >= 1 && data.rating <= 5
+        && (!('reflection' in data) || (data.reflection is string && data.reflection.size() <= 5000))
+        && (!('tomorrowPlan' in data) || (data.tomorrowPlan is string && data.tomorrowPlan.size() <= 5000));
+    }
+
+    function isValidSettings(data) {
+      return data.studentName is string && data.studentName.size() <= 100
+        && data.dailyGoalHours is number && data.dailyGoalHours >= 0
+        && data.defaultSubject is string && data.defaultSubject.size() <= 100;
+    }
+
+    function isValidSnapshot(data) {
+      return data.id is string && isValidId(data.id)
+        && data.timestamp is number && data.timestamp >= 0
+        && data.label is string && data.label.size() <= 200
+        && data.sessionsCount is number && data.sessionsCount >= 0
+        && data.dataJson is string;
+    }
+
+    // User Profile Root
+    match /users/{userId} {
+      allow read, write: if isOwner(userId) && isValidId(userId);
+
+      // 1. Study Sessions
+      match /sessions/{sessionId} {
+        allow get: if isOwner(userId) && isValidId(sessionId);
+        allow list: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidId(sessionId) && isValidSession(request.resource.data, userId);
+        allow update: if isOwner(userId) && isValidId(sessionId) && isValidSession(request.resource.data, userId)
+                      && request.resource.data.id == resource.data.id
+                      && request.resource.data.startTime == resource.data.startTime;
+        allow delete: if isOwner(userId) && isValidId(sessionId);
+      }
+
+      // 2. Academic Subjects
+      match /subjects/{subjectId} {
+        allow get: if isOwner(userId) && isValidId(subjectId);
+        allow list: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidId(subjectId) && isValidSubject(request.resource.data);
+        allow update: if isOwner(userId) && isValidId(subjectId) && isValidSubject(request.resource.data)
+                      && request.resource.data.id == resource.data.id;
+        allow delete: if isOwner(userId) && isValidId(subjectId);
+      }
+
+      // 3. Study Goals
+      match /goals/{goalId} {
+        allow get: if isOwner(userId) && isValidId(goalId);
+        allow list: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidId(goalId) && isValidGoal(request.resource.data);
+        allow update: if isOwner(userId) && isValidId(goalId) && isValidGoal(request.resource.data)
+                      && request.resource.data.id == resource.data.id;
+        allow delete: if isOwner(userId) && isValidId(goalId);
+      }
+
+      // 4. Daily Reviews
+      match /dailyReviews/{reviewId} {
+        allow get: if isOwner(userId) && isValidId(reviewId);
+        allow list: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidId(reviewId) && isValidReview(request.resource.data);
+        allow update: if isOwner(userId) && isValidId(reviewId) && isValidReview(request.resource.data)
+                      && request.resource.data.id == resource.data.id;
+        allow delete: if isOwner(userId) && isValidId(reviewId);
+      }
+
+      // 5. Settings
+      match /settings/{settingsId} {
+        allow get: if isOwner(userId) && isValidId(settingsId);
+        allow list: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidId(settingsId) && isValidSettings(request.resource.data);
+        allow update: if isOwner(userId) && isValidId(settingsId) && isValidSettings(request.resource.data);
+        allow delete: if isOwner(userId) && isValidId(settingsId);
+      }
+
+      // 6. Snapshots
+      match /snapshots/{snapshotId} {
+        allow get: if isOwner(userId) && isValidId(snapshotId);
+        allow list: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidId(snapshotId) && isValidSnapshot(request.resource.data);
+        allow update: if isOwner(userId) && isValidId(snapshotId) && isValidSnapshot(request.resource.data)
+                      && request.resource.data.id == resource.data.id;
+        allow delete: if isOwner(userId) && isValidId(snapshotId);
+      }
+    }
+  }
+}

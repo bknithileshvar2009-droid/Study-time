@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useStudy } from '../context/StudyContext';
 import {
   formatDurationHMS,
@@ -7,6 +7,7 @@ import {
   calculatePausedDuration,
 } from '../utils/timeFormat';
 import { ConfirmModal } from './ConfirmModal';
+import { TagBadge } from './TagBadge';
 import {
   Play,
   Pause,
@@ -18,8 +19,9 @@ import {
   Sparkles,
   Maximize2,
   Minimize2,
-  AlertCircle,
-  CheckCircle,
+  Tag as TagIcon,
+  Plus,
+  Award,
 } from 'lucide-react';
 
 export const TimerView: React.FC = () => {
@@ -29,32 +31,70 @@ export const TimerView: React.FC = () => {
     isTimerRunning,
     isTimerPaused,
     startStudy,
+    updateActiveSessionMetadata,
     pauseStudy,
     resumeStudy,
     stopStudy,
     discardActiveSession,
     settings,
+    totalHoursFormatted,
   } = useStudy();
 
   const [subjectInput, setSubjectInput] = useState<string>(settings.defaultSubject);
   const [sessionNotes, setSessionNotes] = useState<string>('');
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  const [customTagInput, setCustomTagInput] = useState<string>('');
   const [isDiscardModalOpen, setIsDiscardModalOpen] = useState(false);
   const [isZenMode, setIsZenMode] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
 
-  // Sync active session notes if present
-  React.useEffect(() => {
+  // Sync active session state
+  useEffect(() => {
     if (activeSession) {
       setSubjectInput(activeSession.subject || settings.defaultSubject);
       setSessionNotes(activeSession.notes || '');
+      setSelectedTags(activeSession.tags || []);
     }
   }, [activeSession, settings.defaultSubject]);
+
+  const toggleTag = (tag: string) => {
+    const clean = tag.replace(/^#/, '').toLowerCase().trim();
+    if (!clean) return;
+
+    let updated: string[];
+    if (selectedTags.includes(clean)) {
+      updated = selectedTags.filter((t) => t !== clean);
+    } else {
+      updated = [...selectedTags, clean];
+    }
+    setSelectedTags(updated);
+
+    if (activeSession) {
+      updateActiveSessionMetadata({ tags: updated });
+    }
+  };
+
+  const addCustomTag = () => {
+    const clean = customTagInput.replace(/^#/, '').toLowerCase().trim();
+    if (clean && !selectedTags.includes(clean)) {
+      const updated = [...selectedTags, clean];
+      setSelectedTags(updated);
+      setCustomTagInput('');
+      if (activeSession) {
+        updateActiveSessionMetadata({ tags: updated });
+      }
+    }
+  };
 
   const handleStart = async () => {
     if (isProcessing || isTimerRunning) return;
     setIsProcessing(true);
     try {
-      await startStudy(subjectInput, sessionNotes);
+      await startStudy({
+        subject: subjectInput,
+        notes: sessionNotes,
+        tags: selectedTags,
+      });
     } finally {
       setIsProcessing(false);
     }
@@ -84,12 +124,12 @@ export const TimerView: React.FC = () => {
     if (isProcessing || !activeSession) return;
     setIsProcessing(true);
     try {
-      // Save current notes before stopping
       if (activeSession) {
         activeSession.notes = sessionNotes;
       }
       await stopStudy();
       setSessionNotes('');
+      setSelectedTags([]);
     } finally {
       setIsProcessing(false);
     }
@@ -99,12 +139,18 @@ export const TimerView: React.FC = () => {
 
   return (
     <div className={`space-y-6 ${isZenMode ? 'fixed inset-0 z-50 bg-[#07080c] p-6 flex flex-col justify-center items-center' : 'animate-in fade-in duration-300'}`}>
-      {/* Top Header / Zen Switch */}
+      {/* Top Header / Total Hours Till Now Banner / Zen Switch */}
       <div className="flex items-center justify-between w-full max-w-4xl mx-auto">
         <div>
-          <span className="text-xs uppercase font-bold tracking-widest text-amber-400">
-            Study Timer Engine
-          </span>
+          <div className="flex items-center gap-2">
+            <span className="text-xs uppercase font-bold tracking-widest text-amber-400">
+              Study Timer Engine
+            </span>
+            <span className="text-slate-600">•</span>
+            <span className="text-xs font-mono text-slate-400 flex items-center gap-1">
+              <Award className="w-3 h-3 text-amber-400" /> Total Till Now: <strong className="text-amber-300">{totalHoursFormatted}</strong>
+            </span>
+          </div>
           <h2 className="text-2xl font-bold text-white tracking-tight font-display">
             {isTimerRunning ? 'Active Focus Session' : isTimerPaused ? 'Session Paused' : 'Ready to Study'}
           </h2>
@@ -132,8 +178,8 @@ export const TimerView: React.FC = () => {
           }`}
         />
 
-        {/* Status Badge */}
-        <div className="relative z-10 flex items-center justify-center gap-2 mb-6">
+        {/* Status Badge & Active Subject & Tags */}
+        <div className="relative z-10 flex flex-wrap items-center justify-center gap-2 mb-4">
           <span
             className={`w-3 h-3 rounded-full ${
               isTimerRunning
@@ -154,6 +200,15 @@ export const TimerView: React.FC = () => {
             <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-amber-500/10 text-amber-300 border border-amber-500/30">
               {activeSession.subject}
             </span>
+          )}
+
+          {/* Active Tags */}
+          {selectedTags.length > 0 && (
+            <div className="flex items-center gap-1">
+              {selectedTags.map((t) => (
+                <TagBadge key={t} tag={t} size="xs" />
+              ))}
+            </div>
           )}
         </div>
 
@@ -243,53 +298,88 @@ export const TimerView: React.FC = () => {
         </div>
       </div>
 
-      {/* Subject & Live Notes Drawer */}
+      {/* Tags & Subject & Live Notes Drawer */}
       <div className="w-full max-w-4xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-6">
-        {/* Subject Card */}
-        <div className="p-5 rounded-2xl bg-[#0a0c13] border border-slate-800/90 space-y-3">
-          <label className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-2">
-            <BookOpen className="w-4 h-4 text-amber-400" />
-            Subject / Study Label
-          </label>
-          <input
-            type="text"
-            value={subjectInput}
-            onChange={(e) => {
-              setSubjectInput(e.target.value);
-              if (activeSession) {
-                activeSession.subject = e.target.value.trim() || 'General Study';
-              }
-            }}
-            placeholder="e.g. Physics, Chemistry, Calculus"
-            list="subject-presets-timer"
-            className="w-full px-3.5 py-2.5 bg-black/60 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-amber-500/60"
-          />
-          <datalist id="subject-presets-timer">
-            {settings.subjectPresets.map((p) => (
-              <option key={p} value={p} />
-            ))}
-          </datalist>
+        {/* Subject & Tags Card */}
+        <div className="p-5 rounded-2xl bg-[#0a0c13] border border-slate-800/90 space-y-4">
+          <div>
+            <label className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-2 mb-2">
+              <BookOpen className="w-4 h-4 text-amber-400" />
+              Subject / Study Label
+            </label>
+            <input
+              type="text"
+              value={subjectInput}
+              onChange={(e) => {
+                setSubjectInput(e.target.value);
+                if (activeSession) {
+                  activeSession.subject = e.target.value.trim() || 'General Study';
+                }
+              }}
+              placeholder="e.g. Physics, Chemistry, Calculus"
+              list="subject-presets-timer"
+              className="w-full px-3.5 py-2.5 bg-black/60 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-amber-500/60"
+            />
+            <datalist id="subject-presets-timer">
+              {settings.subjectPresets.map((p) => (
+                <option key={p} value={p} />
+              ))}
+            </datalist>
+          </div>
 
-          {/* Quick preset buttons */}
-          <div className="flex flex-wrap gap-1.5 pt-1">
-            {settings.subjectPresets.slice(0, 5).map((preset) => (
-              <button
-                key={preset}
-                onClick={() => {
-                  setSubjectInput(preset);
-                  if (activeSession) {
-                    activeSession.subject = preset;
+          {/* Tag Selector */}
+          <div className="pt-2 border-t border-slate-800/80 space-y-2">
+            <label className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-2">
+              <TagIcon className="w-3.5 h-3.5 text-amber-400" />
+              Session Tags (e.g. #urgent, #review)
+            </label>
+
+            <div className="flex flex-wrap gap-1.5">
+              {settings.tagPresets.map((tag) => {
+                const clean = tag.replace(/^#/, '');
+                const isSelected = selectedTags.includes(clean);
+                return (
+                  <button
+                    key={clean}
+                    type="button"
+                    onClick={() => toggleTag(clean)}
+                    className={`text-xs px-2.5 py-1 rounded-lg border font-mono transition-all flex items-center gap-1 ${
+                      isSelected
+                        ? 'bg-amber-500/25 text-amber-300 border-amber-500/50 shadow-sm font-semibold'
+                        : 'bg-slate-900/70 text-slate-400 hover:text-slate-200 border-slate-800'
+                    }`}
+                  >
+                    <span>#</span>
+                    <span>{clean}</span>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Custom Tag Add */}
+            <div className="flex items-center gap-1 pt-1">
+              <input
+                type="text"
+                value={customTagInput}
+                onChange={(e) => setCustomTagInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    addCustomTag();
                   }
                 }}
-                className={`text-[10px] font-medium px-2 py-1 rounded-lg border transition-colors ${
-                  subjectInput === preset
-                    ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
-                    : 'bg-slate-900 text-slate-400 border-slate-800 hover:text-white'
-                }`}
-              >
-                {preset}
-              </button>
-            ))}
+                placeholder="+ Add custom tag (press Enter)"
+                className="w-full px-2.5 py-1.5 bg-black/60 border border-slate-800 rounded-lg text-xs font-mono text-white placeholder-slate-600 focus:outline-none focus:border-amber-500/60"
+              />
+              {customTagInput && (
+                <button
+                  onClick={addCustomTag}
+                  className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs text-amber-300"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
           </div>
         </div>
 
@@ -300,7 +390,7 @@ export const TimerView: React.FC = () => {
             Session Notes & Reflections (Saved Automatically)
           </label>
           <textarea
-            rows={3}
+            rows={4}
             value={sessionNotes}
             onChange={(e) => {
               setSessionNotes(e.target.value);
@@ -312,7 +402,7 @@ export const TimerView: React.FC = () => {
             className="w-full px-3.5 py-2.5 bg-black/60 border border-slate-800 rounded-xl text-xs text-white placeholder-slate-600 focus:outline-none focus:border-amber-500/60 resize-none"
           />
           <span className="text-[11px] text-slate-500 block">
-            Notes will be permanently linked to this session upon stopping.
+            Subject, tags, and notes are automatically saved to Firebase RTDB and IndexedDB.
           </span>
         </div>
       </div>
