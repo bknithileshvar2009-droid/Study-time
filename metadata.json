@@ -1,0 +1,6 @@
+{
+  "name": "Chronos Study - Precision Study Time Tracker",
+  "description": "Professional standalone study time tracking application with persistent session history, multi-device sync, and PDF reports.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
