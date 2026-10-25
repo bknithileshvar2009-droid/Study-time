@@ -135,9 +135,11 @@ interface StudyContextType {
 
   // Cloud Sync & Auth
   cloudStatus: AutoCloudStatus;
+  cloudSaveStatus: 'idle' | 'saving' | 'success' | 'error';
   triggerManualCloudSync: () => Promise<boolean>;
   loginWithGoogle: () => Promise<void>;
   logout: () => Promise<void>;
+  runDiagnostics: () => Promise<any>;
 
   // Toast
   toastMessage: string | null;
@@ -162,6 +164,7 @@ export const StudyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [settings, setSettings] = useState<UserSettings>(DEFAULT_SETTINGS);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [cloudSaveStatus, setCloudSaveStatus] = useState<'idle' | 'saving' | 'success' | 'error'>('idle');
 
   // Idle detection state
   const [idleDetected, setIdleDetected] = useState<boolean>(false);
@@ -331,16 +334,16 @@ export const StudyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         // 2. Automatic background sync with Firebase (Shared Cloud Storage)
         const cloudPayload = await autoFirebaseService.loadAllDataFromFirebase();
         if (isMounted) {
-          // Merge Cloud Sessions with Local Sessions
+          let finalSessions = savedSessions;
           if (cloudPayload.sessions && cloudPayload.sessions.length > 0) {
             const map = new Map<string, StudySession>();
             cloudPayload.sessions.forEach((s) => map.set(s.id, s));
             savedSessions.forEach((s) => {
               if (!map.has(s.id)) map.set(s.id, s);
             });
-            const merged = Array.from(map.values()).sort((a, b) => b.startTime - a.startTime);
-            setSessions(merged);
-            merged.forEach((s) => storageService.saveSession(s));
+            finalSessions = Array.from(map.values()).sort((a, b) => b.startTime - a.startTime);
+            setSessions(finalSessions);
+            finalSessions.forEach((s) => storageService.saveSession(s));
           }
 
           if (cloudPayload.subjects && cloudPayload.subjects.length > 0) {
@@ -358,22 +361,23 @@ export const StudyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             cloudPayload.dailyReviews.forEach((r) => storageService.saveReview(r));
           }
 
+          let finalSettings = effectiveSettings;
           if (cloudPayload.settings) {
-            const mergedSettings: UserSettings = {
+            finalSettings = {
               ...cloudPayload.settings,
               widgetMode: urlHasWidget ? true : (cloudPayload.settings.widgetMode ?? effectiveSettings.widgetMode ?? false),
             };
-            setSettings(mergedSettings);
-            storageService.saveSettings(mergedSettings);
+            setSettings(finalSettings);
+            storageService.saveSettings(finalSettings);
           }
 
           // Trigger cross-device sync of any local records that weren't in the cloud
           await autoFirebaseService.autoSyncAll(
-            sessions.length > 0 ? sessions : savedSessions,
-            effectiveSettings,
-            savedSubjects,
-            savedGoals,
-            savedReviews
+            finalSessions,
+            finalSettings,
+            cloudPayload.subjects || savedSubjects,
+            cloudPayload.goals || savedGoals,
+            cloudPayload.dailyReviews || savedReviews
           );
         }
         
@@ -657,10 +661,14 @@ export const StudyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     if (settings.soundEnabled) soundService.playFinish();
     
     // Await cloud persistence and provide explicit user feedback
+    setCloudSaveStatus('saving');
     const cloudSuccess = await autoFirebaseService.autoSaveSession(completedSession);
     if (cloudSuccess) {
+      setCloudSaveStatus('success');
       showToast(`Saved to cloud: ${formatDurationHuman(finalAccumulated)} studied`);
+      setTimeout(() => setCloudSaveStatus('idle'), 3000);
     } else {
+      setCloudSaveStatus('error');
       showToast('Cloud save failed — session preserved locally. Retry from Settings.');
     }
     
@@ -1140,14 +1148,22 @@ export const StudyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   }, [showToast]);
 
   const triggerManualCloudSync = useCallback(async (): Promise<boolean> => {
+    setCloudSaveStatus('saving');
     const success = await autoFirebaseService.autoSyncAll(sessions, settings);
     if (success) {
+      setCloudSaveStatus('success');
       showToast('Cloud database synced successfully');
+      setTimeout(() => setCloudSaveStatus('idle'), 3000);
     } else {
+      setCloudSaveStatus('error');
       showToast('Sync recorded to local cache');
     }
     return success;
   }, [sessions, settings, showToast]);
+
+  const runDiagnostics = useCallback(async () => {
+    return await autoFirebaseService.runDiagnostics();
+  }, []);
 
   /* ---------------- DERIVED ANALYTICS & STATS ---------------- */
 
@@ -1367,9 +1383,11 @@ export const StudyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         todaySessions,
         dailySummaries,
         cloudStatus,
+        cloudSaveStatus,
         triggerManualCloudSync,
         loginWithGoogle,
         logout,
+        runDiagnostics,
         toastMessage,
         showToast,
       }}

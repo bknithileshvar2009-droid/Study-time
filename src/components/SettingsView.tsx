@@ -25,6 +25,7 @@ import {
   LogIn,
   LogOut,
 } from 'lucide-react';
+import { FirebaseDiagnostics } from './FirebaseDiagnostics';
 
 export const SettingsView: React.FC = () => {
   const {
@@ -172,6 +173,9 @@ export const SettingsView: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* 0. Cloud Diagnostics (Temporary Debug Section) */}
+      <FirebaseDiagnostics />
 
       {/* 1. Widget Mode ON / OFF Toggle */}
       <div className="p-6 rounded-2xl bg-gradient-to-r from-[#0c0e15] to-[#131724] border border-amber-500/30 shadow-xl space-y-4">

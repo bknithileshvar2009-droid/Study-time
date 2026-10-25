@@ -22,6 +22,8 @@ import {
   Tag as TagIcon,
   Plus,
   Award,
+  RefreshCw,
+  AlertTriangle,
 } from 'lucide-react';
 
 export const TimerView: React.FC = () => {
@@ -38,6 +40,7 @@ export const TimerView: React.FC = () => {
     discardActiveSession,
     settings,
     totalHoursFormatted,
+    cloudSaveStatus,
   } = useStudy();
 
   const [subjectInput, setSubjectInput] = useState<string>(settings.defaultSubject);
@@ -278,11 +281,28 @@ export const TimerView: React.FC = () => {
 
               <button
                 onClick={handleStop}
-                disabled={isProcessing}
-                className="flex items-center gap-2.5 px-8 py-3.5 rounded-2xl font-bold text-sm text-white bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 shadow-xl shadow-red-950/40 transition-all active:scale-98 cursor-pointer"
+                disabled={isProcessing || cloudSaveStatus === 'saving'}
+                className={`flex items-center gap-2.5 px-8 py-3.5 rounded-2xl font-bold text-sm text-white transition-all active:scale-98 cursor-pointer shadow-xl ${
+                  cloudSaveStatus === 'saving' ? 'bg-amber-600' :
+                  cloudSaveStatus === 'error' ? 'bg-rose-700' : 'bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 shadow-red-950/40'
+                }`}
               >
-                <Square className="w-4 h-4 fill-white" />
-                STOP & SAVE
+                {cloudSaveStatus === 'saving' ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                    SAVING...
+                  </>
+                ) : cloudSaveStatus === 'error' ? (
+                  <>
+                    <AlertTriangle className="w-4 h-4" />
+                    RETRY SAVE
+                  </>
+                ) : (
+                  <>
+                    <Square className="w-4 h-4 fill-white" />
+                    STOP & SAVE
+                  </>
+                )}
               </button>
 
               <button

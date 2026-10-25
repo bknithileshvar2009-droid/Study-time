@@ -11,6 +11,8 @@ import {
   Clock,
   BookOpen,
   Target,
+  RefreshCw,
+  AlertTriangle,
 } from 'lucide-react';
 
 export const MinimalWidgetView: React.FC = () => {
@@ -25,6 +27,8 @@ export const MinimalWidgetView: React.FC = () => {
     stopStudy,
     sessions,
     dailySummaries,
+    cloudStatus,
+    cloudSaveStatus,
     settings,
     updateSettings,
     showToast,
@@ -243,10 +247,28 @@ export const MinimalWidgetView: React.FC = () => {
                     {/* STOP AND SAVE */}
                     <button
                       onClick={handleStop}
-                      className="py-3 px-4 rounded-xl font-bold text-xs tracking-wider uppercase text-white bg-rose-600 hover:bg-rose-500 transition-all shadow-lg shadow-rose-900/30 flex items-center justify-center gap-2 cursor-pointer active:scale-[0.98]"
+                      disabled={cloudSaveStatus === 'saving'}
+                      className={`py-3 px-4 rounded-xl font-bold text-xs tracking-wider uppercase text-white transition-all shadow-lg flex items-center justify-center gap-2 cursor-pointer active:scale-[0.98] ${
+                        cloudSaveStatus === 'saving' ? 'bg-amber-600' : 
+                        cloudSaveStatus === 'error' ? 'bg-rose-700' : 'bg-rose-600 hover:bg-rose-500'
+                      }`}
                     >
-                      <Square className="w-3.5 h-3.5 fill-white" />
-                      <span>Stop & Save</span>
+                      {cloudSaveStatus === 'saving' ? (
+                        <>
+                          <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                          <span>Saving...</span>
+                        </>
+                      ) : cloudSaveStatus === 'error' ? (
+                        <>
+                          <AlertTriangle className="w-3.5 h-3.5" />
+                          <span>Retry Save</span>
+                        </>
+                      ) : (
+                        <>
+                          <Square className="w-3.5 h-3.5 fill-white" />
+                          <span>Stop & Save</span>
+                        </>
+                      )}
                     </button>
                   </>
                 )}

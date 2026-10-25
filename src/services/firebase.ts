@@ -138,6 +138,7 @@ export interface AutoCloudStatus {
   userEmail: string | null;
   isAnonymous: boolean;
   projectId: string;
+  databaseUrl?: string;
 }
 
 export interface CloudFullDataPayload {
@@ -692,6 +693,75 @@ class AutoFirebaseService {
         }
       }
     }
+  }
+
+  public async runDiagnostics(): Promise<{
+    writeSuccess: boolean;
+    readSuccess: boolean;
+    match: boolean;
+    error?: string;
+    writtenValue?: string;
+    readValue?: string;
+    authStatus: string;
+    uid: string | null;
+  }> {
+    const uid = auth.currentUser?.uid || null;
+    const authStatus = auth.currentUser ? (auth.currentUser.isAnonymous ? 'Anonymous' : 'Authenticated') : 'Not Authenticated';
+    const testId = `diag_${Date.now()}`;
+    const testValue = `diagnostic_value_${Math.random().toString(36).substring(7)}`;
+
+    try {
+      if (!uid) {
+        throw new Error('No authenticated user UID found for diagnostics');
+      }
+
+      // Test Write to Firestore
+      const docRef = doc(db, 'users', uid, 'diagnostics', testId);
+      await setDoc(docRef, { value: testValue, timestamp: Date.now() });
+
+      // Test Read from Firestore
+      const snap = await getDoc(docRef);
+      if (!snap.exists()) {
+        return { 
+          writeSuccess: true, 
+          readSuccess: false, 
+          match: false, 
+          error: 'Document not found after write (Possible consistency delay or rule failure)',
+          authStatus,
+          uid
+        };
+      }
+
+      const readValue = snap.data()?.value;
+      const match = readValue === testValue;
+
+      // Cleanup
+      await deleteDoc(docRef).catch(() => {});
+
+      return {
+        writeSuccess: true,
+        readSuccess: true,
+        match,
+        writtenValue: testValue,
+        readValue,
+        authStatus,
+        uid
+      };
+    } catch (err: any) {
+      console.error('Diagnostic Failure:', err);
+      return {
+        writeSuccess: false,
+        readSuccess: false,
+        match: false,
+        error: err.message || String(err),
+        authStatus,
+        uid
+      };
+    }
+  }
+
+  public getRawConfig() {
+    return firebaseConfig;
   }
 }
 
