@@ -36,6 +36,7 @@ import {
   Edit3,
   X,
   ArrowRight,
+  HardDrive,
 } from 'lucide-react';
 
 interface DashboardViewProps {
@@ -64,6 +65,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onInspectSession, 
     saveDailyReview,
     showToast,
     setActiveTab,
+    isDriveConnected,
+    driveAutoBackupStatus,
+    lastDriveBackupMs,
+    connectDrive,
+    triggerDriveAutoBackup,
   } = useStudy();
 
   const [selectedSubject, setSelectedSubject] = useState<string>(settings.defaultSubject);
@@ -590,23 +596,28 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onInspectSession, 
             </button>
 
             <button
-              onClick={() => setActiveTab('reports')}
-              className="w-full p-3.5 rounded-xl bg-slate-900/60 hover:bg-slate-900 border border-slate-800 hover:border-rose-500/30 text-left transition-all flex items-center justify-between group"
+              onClick={() => setActiveTab('drive')}
+              className="w-full p-3.5 rounded-xl bg-slate-900/60 hover:bg-slate-900 border border-slate-800 hover:border-blue-500/30 text-left transition-all flex items-center justify-between group cursor-pointer"
             >
               <div className="flex items-center gap-3">
-                <div className="p-2 rounded-lg bg-rose-500/10 text-rose-400 border border-rose-500/20">
-                  <FileBarChart className="w-4 h-4" />
+                <div className="p-2 rounded-lg bg-blue-500/10 text-blue-400 border border-blue-500/20">
+                  <HardDrive className="w-4 h-4" />
                 </div>
                 <div>
-                  <div className="text-xs font-bold text-white group-hover:text-rose-300">
-                    Export Reports & PDF
+                  <div className="text-xs font-bold text-white group-hover:text-blue-300 flex items-center gap-1.5">
+                    <span>Google Drive Vault</span>
+                    <span className={`text-[9px] uppercase px-1.5 py-0.2 rounded font-mono font-bold ${
+                      isDriveConnected ? 'bg-emerald-500/20 text-emerald-400' : 'bg-slate-800 text-slate-400'
+                    }`}>
+                      {isDriveConnected ? 'Connected' : 'Offline'}
+                    </span>
                   </div>
                   <div className="text-[11px] text-slate-400">
-                    Print or download comprehensive PDF
+                    {isDriveConnected ? 'Auto-backing up StudyTrackerBackup.json' : 'Connect your Drive for automatic backups'}
                   </div>
                 </div>
               </div>
-              <ArrowUpRight className="w-4 h-4 text-slate-500 group-hover:text-rose-400" />
+              <ArrowUpRight className="w-4 h-4 text-slate-500 group-hover:text-blue-400" />
             </button>
           </div>
 

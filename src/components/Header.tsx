@@ -16,6 +16,7 @@ import {
   AppWindow,
   LogIn,
   LogOut,
+  HardDrive,
 } from 'lucide-react';
 
 interface HeaderProps {
@@ -41,6 +42,7 @@ export const Header: React.FC<HeaderProps> = ({ mobileMenuOpen, setMobileMenuOpe
     showToast,
     loginWithGoogle,
     logout,
+    isDriveConnected,
   } = useStudy();
 
   return (
@@ -148,6 +150,22 @@ export const Header: React.FC<HeaderProps> = ({ mobileMenuOpen, setMobileMenuOpe
           )}
           <span className="hidden lg:inline text-[11px]">
             {cloudStatus.isSyncing ? 'Syncing...' : 'Firebase Auto-Synced'}
+          </span>
+        </button>
+
+        {/* Direct High-Visibility Google Drive Vault Button */}
+        <button
+          onClick={() => setActiveTab('drive')}
+          className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-semibold border transition-all cursor-pointer ${
+            isDriveConnected
+              ? 'bg-blue-500/10 border-blue-500/40 text-blue-300 hover:bg-blue-500/20'
+              : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200'
+          }`}
+          title="Google Drive Backup Vault & Storage"
+        >
+          <HardDrive className={`w-3.5 h-3.5 ${isDriveConnected ? 'text-blue-400' : 'text-slate-400'}`} />
+          <span className="hidden md:inline text-[11px]">
+            {isDriveConnected ? 'Drive Connected' : 'Google Drive'}
           </span>
         </button>
 

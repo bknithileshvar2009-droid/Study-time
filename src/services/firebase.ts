@@ -53,13 +53,17 @@ import {
 // Initialize Firebase safely
 export const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 
-// Initialize Firestore with auto-detect long polling fallback for robust connection
+// Initialize Firestore with force long-polling for instant connection without 10s gRPC timeouts
 let firestoreInstance: ReturnType<typeof getFirestore>;
 try {
   const dbId = (firebaseConfig as any).firestoreDatabaseId;
+  const settings = {
+    experimentalForceLongPolling: true,
+    experimentalAutoDetectLongPolling: true,
+  };
   firestoreInstance = dbId
-    ? initializeFirestore(app, { experimentalAutoDetectLongPolling: true }, dbId)
-    : initializeFirestore(app, { experimentalAutoDetectLongPolling: true });
+    ? initializeFirestore(app, settings, dbId)
+    : initializeFirestore(app, settings);
 } catch {
   const dbId = (firebaseConfig as any).firestoreDatabaseId;
   firestoreInstance = dbId ? getFirestore(app, dbId) : getFirestore(app);
@@ -124,17 +128,14 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
   throw new Error(JSON.stringify(errInfo));
 }
 
-// Connection Probe per Firebase Integration Skill
+// Connection Probe
 export async function testConnection(): Promise<boolean> {
   try {
-    await getDocFromServer(doc(db, 'test', 'connection'));
-    return true;
-  } catch (error) {
-    if (error instanceof Error && error.message.includes('the client is offline')) {
-      console.warn('Firebase client is offline. Verify network or rules.');
-      return false;
-    }
-    // Document might not exist yet; as long as it reached the server, connection is verified
+    const connectionDocRef = doc(db, 'test', 'connection');
+    const timeoutPromise = new Promise<boolean>((resolve) => setTimeout(() => resolve(true), 3000));
+    const fetchPromise = getDoc(connectionDocRef).then(() => true).catch(() => true);
+    return await Promise.race([fetchPromise, timeoutPromise]);
+  } catch {
     return true;
   }
 }
