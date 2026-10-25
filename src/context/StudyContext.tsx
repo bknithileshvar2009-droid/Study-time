@@ -133,9 +133,11 @@ interface StudyContextType {
   todaySessions: StudySession[];
   dailySummaries: DailySummary[];
 
-  // Cloud Sync
+  // Cloud Sync & Auth
   cloudStatus: AutoCloudStatus;
   triggerManualCloudSync: () => Promise<boolean>;
+  loginWithGoogle: () => Promise<void>;
+  logout: () => Promise<void>;
 
   // Toast
   toastMessage: string | null;
@@ -271,13 +273,18 @@ export const StudyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     return unsubscribe;
   }, []);
 
-  // Initial Load from Storage
+  // Initial Load & Auth-Dependent Sync
   useEffect(() => {
     let isMounted = true;
-    async function initAllData() {
+    let sessionsUnsubscribe: (() => void) | null = null;
+
+    async function syncData(uid: string | null) {
+      if (!isMounted) return;
+      
       try {
         setIsLoading(true);
-
+        
+        // 1. Initial Load from Storage (IndexedDB/LocalStorage)
         const [
           savedSettings,
           savedSessions,
@@ -315,87 +322,99 @@ export const StudyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             setActiveTimerMode(currentActive.timerMode || 'stopwatch');
             const elapsed = calculateCurrentElapsed(currentActive, Date.now());
             setTimerElapsedMs(elapsed);
-
             if (currentActive.targetDurationMs) {
               setRemainingCountdownMs(Math.max(0, currentActive.targetDurationMs - elapsed));
             }
           }
         }
 
-        // Automatic background sync with Firebase RTDB: load every single entity
-        try {
-          const cloudPayload = await autoFirebaseService.loadAllDataFromFirebase();
-          if (isMounted) {
-            // 1. Sessions
-            if (cloudPayload.sessions && cloudPayload.sessions.length > 0) {
-              const map = new Map<string, StudySession>();
-              cloudPayload.sessions.forEach((s) => map.set(s.id, s));
-              savedSessions.forEach((s) => {
-                if (!map.has(s.id)) map.set(s.id, s);
-              });
-              const merged = Array.from(map.values()).sort((a, b) => b.startTime - a.startTime);
-              setSessions(merged);
-              merged.forEach((s) => storageService.saveSession(s));
-            }
-
-            // 2. Subjects
-            if (cloudPayload.subjects && cloudPayload.subjects.length > 0) {
-              setSubjects(cloudPayload.subjects);
-              cloudPayload.subjects.forEach((subj) => storageService.saveSubject(subj));
-            } else if (savedSubjects.length > 0) {
-              autoFirebaseService.autoSaveSubjects(savedSubjects).catch(() => {});
-            }
-
-            // 3. Goals
-            if (cloudPayload.goals && cloudPayload.goals.length > 0) {
-              setGoals(cloudPayload.goals);
-              cloudPayload.goals.forEach((g) => storageService.saveGoal(g));
-            } else if (savedGoals.length > 0) {
-              autoFirebaseService.autoSaveGoals(savedGoals).catch(() => {});
-            }
-
-            // 4. Daily Reviews
-            if (cloudPayload.dailyReviews && cloudPayload.dailyReviews.length > 0) {
-              setDailyReviews(cloudPayload.dailyReviews);
-              cloudPayload.dailyReviews.forEach((r) => storageService.saveReview(r));
-            } else if (savedReviews.length > 0) {
-              autoFirebaseService.autoSaveDailyReviews(savedReviews).catch(() => {});
-            }
-
-            // 5. Settings
-            if (cloudPayload.settings) {
-              const mergedSettings: UserSettings = {
-                ...cloudPayload.settings,
-                widgetMode: urlHasWidget ? true : (cloudPayload.settings.widgetMode ?? effectiveSettings.widgetMode ?? false),
-              };
-              setSettings(mergedSettings);
-              storageService.saveSettings(mergedSettings);
-            } else if (savedSettings) {
-              autoFirebaseService.autoSaveSettings(effectiveSettings).catch(() => {});
-            }
-
-            // Sync merged state
-            await autoFirebaseService.autoSyncAll(
-              sessions.length > 0 ? sessions : savedSessions,
-              savedSettings,
-              savedSubjects,
-              savedGoals,
-              savedReviews
-            );
+        // 2. Automatic background sync with Firebase (Shared Cloud Storage)
+        const cloudPayload = await autoFirebaseService.loadAllDataFromFirebase();
+        if (isMounted) {
+          // Merge Cloud Sessions with Local Sessions
+          if (cloudPayload.sessions && cloudPayload.sessions.length > 0) {
+            const map = new Map<string, StudySession>();
+            cloudPayload.sessions.forEach((s) => map.set(s.id, s));
+            savedSessions.forEach((s) => {
+              if (!map.has(s.id)) map.set(s.id, s);
+            });
+            const merged = Array.from(map.values()).sort((a, b) => b.startTime - a.startTime);
+            setSessions(merged);
+            merged.forEach((s) => storageService.saveSession(s));
           }
-        } catch (err) {
-          console.warn('Initial cloud load notice:', err);
+
+          if (cloudPayload.subjects && cloudPayload.subjects.length > 0) {
+            setSubjects(cloudPayload.subjects);
+            cloudPayload.subjects.forEach((subj) => storageService.saveSubject(subj));
+          }
+
+          if (cloudPayload.goals && cloudPayload.goals.length > 0) {
+            setGoals(cloudPayload.goals);
+            cloudPayload.goals.forEach((g) => storageService.saveGoal(g));
+          }
+
+          if (cloudPayload.dailyReviews && cloudPayload.dailyReviews.length > 0) {
+            setDailyReviews(cloudPayload.dailyReviews);
+            cloudPayload.dailyReviews.forEach((r) => storageService.saveReview(r));
+          }
+
+          if (cloudPayload.settings) {
+            const mergedSettings: UserSettings = {
+              ...cloudPayload.settings,
+              widgetMode: urlHasWidget ? true : (cloudPayload.settings.widgetMode ?? effectiveSettings.widgetMode ?? false),
+            };
+            setSettings(mergedSettings);
+            storageService.saveSettings(mergedSettings);
+          }
+
+          // Trigger cross-device sync of any local records that weren't in the cloud
+          await autoFirebaseService.autoSyncAll(
+            sessions.length > 0 ? sessions : savedSessions,
+            effectiveSettings,
+            savedSubjects,
+            savedGoals,
+            savedReviews
+          );
         }
+        
+        // 3. Establish Real-time Listener for Cross-device responsiveness
+        if (sessionsUnsubscribe) sessionsUnsubscribe();
+        sessionsUnsubscribe = autoFirebaseService.subscribeToSessions((cloudSessions) => {
+          if (isMounted && cloudSessions.length > 0) {
+            setSessions((prev) => {
+              const map = new Map<string, StudySession>();
+              prev.forEach(s => map.set(s.id, s));
+              cloudSessions.forEach(s => map.set(s.id, s));
+              const merged = Array.from(map.values()).sort((a, b) => b.startTime - a.startTime);
+              
+              // Only update if something actually changed to avoid render loops
+              if (JSON.stringify(merged) !== JSON.stringify(prev)) {
+                merged.forEach(s => storageService.saveSession(s));
+                return merged;
+              }
+              return prev;
+            });
+          }
+        });
+
       } catch (err) {
-        console.error('Initialization error:', err);
+        console.error('Initialization / Sync error:', err);
       } finally {
         if (isMounted) setIsLoading(false);
       }
     }
 
-    initAllData();
+    // React to Auth Changes (Sign-in / Sign-out / UID Change)
+    const authUnsubscribe = autoFirebaseService.subscribeStatus((status) => {
+      if (status.userId) {
+        syncData(status.userId);
+      }
+    });
+
     return () => {
       isMounted = false;
+      authUnsubscribe();
+      if (sessionsUnsubscribe) sessionsUnsubscribe();
     };
   }, []);
 
@@ -636,9 +655,15 @@ export const StudyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setSessions((prev) => [completedSession, ...prev.filter((s) => s.id !== completedSession.id)]);
 
     if (settings.soundEnabled) soundService.playFinish();
-    autoFirebaseService.autoSaveSession(completedSession).catch(() => {});
-
-    showToast(`Session saved: ${formatDurationHuman(finalAccumulated)} studied`);
+    
+    // Await cloud persistence and provide explicit user feedback
+    const cloudSuccess = await autoFirebaseService.autoSaveSession(completedSession);
+    if (cloudSuccess) {
+      showToast(`Saved to cloud: ${formatDurationHuman(finalAccumulated)} studied`);
+    } else {
+      showToast('Cloud save failed — session preserved locally. Retry from Settings.');
+    }
+    
     return completedSession;
   }, [activeSession, settings, showToast]);
 
@@ -1102,10 +1127,22 @@ export const StudyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     [settings, sessions, showToast]
   );
 
+  const loginWithGoogle = useCallback(async () => {
+    const user = await autoFirebaseService.signInWithGoogle();
+    if (user) {
+      showToast(`Welcome, ${user.displayName || 'Scholar'}! Cloud sync active.`);
+    }
+  }, [showToast]);
+
+  const logout = useCallback(async () => {
+    await autoFirebaseService.logOut();
+    showToast('Signed out. Local sync active.');
+  }, [showToast]);
+
   const triggerManualCloudSync = useCallback(async (): Promise<boolean> => {
     const success = await autoFirebaseService.autoSyncAll(sessions, settings);
     if (success) {
-      showToast('Firebase Realtime Database synced');
+      showToast('Cloud database synced successfully');
     } else {
       showToast('Sync recorded to local cache');
     }
@@ -1331,6 +1368,8 @@ export const StudyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         dailySummaries,
         cloudStatus,
         triggerManualCloudSync,
+        loginWithGoogle,
+        logout,
         toastMessage,
         showToast,
       }}

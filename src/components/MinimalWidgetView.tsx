@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useStudy } from '../context/StudyContext';
-import { formatDurationHMS, formatDurationHuman } from '../utils/timeFormat';
+import { formatDurationHMS, formatDurationHuman, getLocalDateString } from '../utils/timeFormat';
 import {
   Play,
   Square,
@@ -10,9 +10,7 @@ import {
   ArrowLeft,
   Clock,
   BookOpen,
-  Calendar,
-  CheckCircle2,
-  Tag as TagIcon,
+  Target,
 } from 'lucide-react';
 
 export const MinimalWidgetView: React.FC = () => {
@@ -26,25 +24,41 @@ export const MinimalWidgetView: React.FC = () => {
     resumeStudy,
     stopStudy,
     sessions,
+    dailySummaries,
     settings,
     updateSettings,
     showToast,
   } = useStudy();
 
   const [widgetView, setWidgetView] = useState<'timer' | 'history'>('timer');
-  const [selectedSubject, setSelectedSubject] = useState<string>(
-    settings.defaultSubject || 'Physics'
-  );
+
+  // Calculate Daily Goal Progress
+  const todayStr = getLocalDateString(Date.now());
+  const todaySummary = dailySummaries.find((d) => d.date === todayStr);
+  const baseTodayMs = todaySummary ? todaySummary.totalMs : 0;
+  const activeMs = activeSession ? timerElapsedMs : 0;
+  const totalTodayMs = baseTodayMs + activeMs;
+
+  const goalHours = settings.dailyGoalHours || 4;
+  const goalMs = goalHours * 3600 * 1000;
+  const progressRatio = Math.min(1, Math.max(0, totalTodayMs / goalMs));
+  const progressPercent = Math.min(100, Math.round(progressRatio * 100));
+  const totalTodayHoursFormatted = (totalTodayMs / (1000 * 60 * 60)).toFixed(1);
+
+  // SVG Ring Constants
+  const circleRadius = 86;
+  const circumference = 2 * Math.PI * circleRadius;
+  const strokeDashoffset = circumference * (1 - progressRatio);
 
   // Handle Start
   const handleStart = async () => {
     if (activeSession && activeSession.status === 'running') return;
     try {
       await startStudy({
-        subject: selectedSubject,
+        subject: 'General Study',
         timerMode: 'stopwatch',
       });
-      showToast(`Started study session: ${selectedSubject}`);
+      showToast('Started study session');
     } catch (err) {
       console.error('Failed to start study session:', err);
     }
@@ -110,7 +124,7 @@ export const MinimalWidgetView: React.FC = () => {
 
         {/* VIEW 1: MINIMAL DIGITAL TIMER & CONTROLS */}
         {widgetView === 'timer' && (
-          <div className="flex flex-col items-center justify-center space-y-6 py-2">
+          <div className="flex flex-col items-center justify-center space-y-5 py-1">
             
             {/* Status indicator */}
             <div className="flex items-center gap-2 text-xs font-medium">
@@ -132,35 +146,65 @@ export const MinimalWidgetView: React.FC = () => {
               </span>
             </div>
 
-            {/* Clear Digital Study Timer */}
-            <div className="w-full py-6 px-4 rounded-2xl bg-black/60 border border-slate-800/90 shadow-inner flex flex-col items-center justify-center">
-              <div className="font-mono text-4xl sm:text-5xl font-extrabold tracking-tight text-amber-300 drop-shadow-md">
-                {formatDurationHMS(timerElapsedMs)}
-              </div>
+            {/* Clear Digital Study Timer with Progress Ring */}
+            <div className="relative w-full py-6 px-4 rounded-2xl bg-black/60 border border-slate-800/90 shadow-inner flex flex-col items-center justify-center overflow-hidden">
+              {/* Circular Progress Ring Container */}
+              <div className="relative w-52 h-52 flex items-center justify-center">
+                <svg className="w-full h-full transform -rotate-90" viewBox="0 0 200 200">
+                  {/* Background Track */}
+                  <circle
+                    cx="100"
+                    cy="100"
+                    r={circleRadius}
+                    className="stroke-slate-800/80"
+                    strokeWidth="8"
+                    fill="transparent"
+                  />
+                  {/* Progress Arc */}
+                  <circle
+                    cx="100"
+                    cy="100"
+                    r={circleRadius}
+                    className={progressPercent >= 100 ? 'stroke-emerald-400' : 'stroke-amber-400'}
+                    strokeWidth="8"
+                    strokeDasharray={circumference}
+                    strokeDashoffset={strokeDashoffset}
+                    strokeLinecap="round"
+                    fill="transparent"
+                    style={{
+                      transition: 'stroke-dashoffset 0.8s ease-out, stroke 0.5s ease',
+                      filter: progressPercent >= 100
+                        ? 'drop-shadow(0px 0px 8px rgba(52, 211, 153, 0.5))'
+                        : 'drop-shadow(0px 0px 8px rgba(251, 191, 36, 0.4))',
+                    }}
+                  />
+                </svg>
 
-              {/* Subject selector / active subject */}
-              <div className="mt-3 flex items-center gap-1.5">
-                {activeSession ? (
-                  <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-amber-500/10 border border-amber-500/25 text-amber-300 text-xs font-semibold">
-                    <BookOpen className="w-3 h-3" />
-                    {activeSession.subject || 'General Study'}
-                  </span>
-                ) : (
-                  <div className="flex items-center gap-2">
-                    <span className="text-[11px] text-slate-400">Subject:</span>
-                    <select
-                      value={selectedSubject}
-                      onChange={(e) => setSelectedSubject(e.target.value)}
-                      className="px-2.5 py-1 bg-[#141824] border border-slate-700 rounded-lg text-xs font-medium text-slate-200 focus:outline-none focus:border-amber-500/60"
-                    >
-                      {settings.subjectPresets.map((sub) => (
-                        <option key={sub} value={sub}>
-                          {sub}
-                        </option>
-                      ))}
-                    </select>
+                {/* Inner Content inside Ring */}
+                <div className="absolute inset-0 flex flex-col items-center justify-center p-2 text-center">
+                  <div className="font-mono text-3xl sm:text-4xl font-extrabold tracking-tight text-amber-300 drop-shadow-md">
+                    {formatDurationHMS(timerElapsedMs)}
                   </div>
-                )}
+
+                  {/* Active / General Subject Badge */}
+                  <div className="mt-1.5 flex items-center gap-1.5">
+                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/25 text-amber-300 text-[11px] font-semibold">
+                      <BookOpen className="w-3 h-3" />
+                      {activeSession?.subject || 'General Study'}
+                    </span>
+                  </div>
+
+                  {/* Daily Goal Progress Indicator */}
+                  <div className="mt-2 flex items-center gap-1 text-[10px] font-mono text-slate-400 bg-slate-900/80 px-2 py-0.5 rounded-md border border-slate-800">
+                    <Target className={`w-3 h-3 ${progressPercent >= 100 ? 'text-emerald-400' : 'text-amber-400'}`} />
+                    <span>
+                      <strong className={progressPercent >= 100 ? 'text-emerald-300' : 'text-amber-300'}>
+                        {progressPercent}%
+                      </strong>{' '}
+                      of {goalHours}h Goal ({totalTodayHoursFormatted}h)
+                    </span>
+                  </div>
+                </div>
               </div>
             </div>
 

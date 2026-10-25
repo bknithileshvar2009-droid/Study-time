@@ -22,6 +22,8 @@ import {
   Tag as TagIcon,
   Award,
   AppWindow,
+  LogIn,
+  LogOut,
 } from 'lucide-react';
 
 export const SettingsView: React.FC = () => {
@@ -33,6 +35,8 @@ export const SettingsView: React.FC = () => {
     importFullData,
     cloudStatus,
     triggerManualCloudSync,
+    loginWithGoogle,
+    logout,
     totalHoursFormatted,
     totalStudyTimeHMS,
     showToast,
@@ -428,50 +432,80 @@ export const SettingsView: React.FC = () => {
         </div>
       </div>
 
-      {/* 5. Automatic Firebase RTDB Sync (No Login Needed) */}
-      <div className="p-6 rounded-2xl bg-[#0c0e15] border border-slate-800/80 space-y-4">
-        <div className="flex items-center justify-between">
+      {/* 5. Account & Cross-Device Sync */}
+      <div className="p-6 rounded-2xl bg-[#0c0e15] border border-emerald-500/20 shadow-xl space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="flex items-center gap-3">
-            <div className="p-2.5 rounded-xl bg-emerald-950/40 border border-emerald-500/30 text-emerald-400">
+            <div className="p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400">
               <Cloud className="w-5 h-5" />
             </div>
             <div>
               <h3 className="text-sm font-bold text-white tracking-wide">
-                Automatic Firebase Cloud Persistence
+                Cloud Sync & Cross-Device Access
               </h3>
-              <p className="text-xs text-slate-400">
-                Sessions automatically save to Firebase Realtime Database and IndexedDB with zero login required.
+              <p className="text-xs text-slate-400 mt-1">
+                {cloudStatus.isAnonymous 
+                  ? 'You are using a Guest account. To sync your study logs between laptop and mobile, please sign in with Google.'
+                  : `Signed in as ${cloudStatus.userEmail}. Your study logs are securely synced to the cloud.`}
               </p>
             </div>
           </div>
 
-          <button
-            onClick={() => triggerManualCloudSync()}
-            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-semibold bg-emerald-950/40 hover:bg-emerald-900/50 text-emerald-300 border border-emerald-500/30 transition-colors"
-          >
-            <RefreshCw className="w-3.5 h-3.5" /> Force Sync Now
-          </button>
+          <div className="flex items-center gap-2">
+            {cloudStatus.isAnonymous ? (
+              <button
+                onClick={() => loginWithGoogle()}
+                className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold text-black bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 transition-all shadow-lg shadow-amber-500/20 cursor-pointer"
+              >
+                <LogIn className="w-4 h-4" />
+                Sign in with Google
+              </button>
+            ) : (
+              <button
+                onClick={() => logout()}
+                className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold text-slate-300 bg-slate-800 hover:bg-slate-700 border border-slate-700 transition-all cursor-pointer"
+              >
+                <LogOut className="w-4 h-4" />
+                Sign Out
+              </button>
+            )}
+          </div>
         </div>
 
-        <div className="p-4 rounded-xl bg-black/40 border border-slate-800/80 space-y-2 text-xs text-slate-300">
+        <div className="p-4 rounded-xl bg-black/40 border border-slate-800/80 space-y-3 text-[11px] text-slate-300">
           <div className="flex items-center justify-between">
-            <span className="text-slate-400">Cloud Backend:</span>
-            <span className="font-semibold text-emerald-400">
-              gen-lang-client-0079533925 (Realtime Database Connected)
-            </span>
+            <span className="text-slate-500 uppercase tracking-widest font-bold text-[9px]">Cloud Status</span>
+            <div className="flex items-center gap-1.5">
+              <div className={`w-1.5 h-1.5 rounded-full ${cloudStatus.isConnected ? 'bg-emerald-400' : 'bg-rose-500'}`} />
+              <span className="font-semibold text-slate-200">
+                {cloudStatus.isConnected ? 'Connected to Firebase' : 'Disconnected'}
+              </span>
+            </div>
           </div>
+          
           <div className="flex items-center justify-between">
-            <span className="text-slate-400">Local Cache:</span>
-            <span className="font-semibold text-emerald-400">IndexedDB & LocalStorage Active</span>
+            <span className="text-slate-500 uppercase tracking-widest font-bold text-[9px]">Database ID</span>
+            <span className="font-mono text-slate-400">{cloudStatus.projectId}</span>
           </div>
+
           <div className="flex items-center justify-between">
-            <span className="text-slate-400">Historical Records:</span>
-            <span className="font-mono text-white font-bold">{sessions.length} saved sessions</span>
+            <span className="text-slate-500 uppercase tracking-widest font-bold text-[9px]">Shared Path</span>
+            <span className="font-mono text-amber-500/80">/users/{cloudStatus.userId || 'guest'}/studySessions</span>
           </div>
-          <div className="flex items-center justify-between">
-            <span className="text-slate-400">Total Hours Studied:</span>
-            <span className="font-mono text-amber-300 font-bold">{totalHoursFormatted} ({totalStudyTimeHMS})</span>
+
+          <div className="flex items-center justify-between pt-1 border-t border-slate-800/50">
+            <span className="text-slate-500 uppercase tracking-widest font-bold text-[9px]">Local Records</span>
+            <span className="font-mono text-white">{sessions.length} sessions</span>
           </div>
+
+          <button
+            onClick={() => triggerManualCloudSync()}
+            disabled={cloudStatus.isSyncing}
+            className="w-full mt-2 flex items-center justify-center gap-2 py-2 rounded-lg bg-slate-900 border border-slate-800 text-slate-400 hover:text-white hover:border-slate-700 transition-all disabled:opacity-50"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${cloudStatus.isSyncing ? 'animate-spin' : ''}`} />
+            {cloudStatus.isSyncing ? 'Syncing...' : 'Force Cloud Data Refresh'}
+          </button>
         </div>
       </div>
 

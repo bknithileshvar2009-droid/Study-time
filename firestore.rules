@@ -77,7 +77,7 @@ service cloud.firestore {
       allow read, write: if isOwner(userId) && isValidId(userId);
 
       // 1. Study Sessions
-      match /sessions/{sessionId} {
+      match /studySessions/{sessionId} {
         allow get: if isOwner(userId) && isValidId(sessionId);
         allow list: if isOwner(userId);
         allow create: if isOwner(userId) && isValidId(sessionId) && isValidSession(request.resource.data, userId);

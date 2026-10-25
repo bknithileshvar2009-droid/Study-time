@@ -265,13 +265,14 @@ class AutoFirebaseService {
 
   async autoSaveSession(session: StudySession): Promise<boolean> {
     const uid = await this.getAuthenticatedUid();
-    const docPath = `users/${uid}/sessions/${session.id}`;
+    const sessionId = session.id;
 
     try {
       this.updateStatus({ isSyncing: true, syncError: null });
 
       // Save to Firestore under authenticated user UID
-      const sessionDocRef = doc(db, 'users', uid, 'sessions', session.id);
+      // Consistent Path: users/{uid}/studySessions/{sessionId}
+      const sessionDocRef = doc(db, 'users', uid, 'studySessions', sessionId);
       const cleanSession = {
         ...session,
         userId: uid,
@@ -279,12 +280,14 @@ class AutoFirebaseService {
       };
       await setDoc(sessionDocRef, cleanSession, { merge: true });
 
-      // Secondary sync to RTDB if available
+      // Secondary sync to RTDB for high-speed cross-device responsiveness
       if (rtdb) {
         try {
-          const userRef = ref(rtdb, `users/${uid}/sessions/${session.id}`);
+          const userRef = ref(rtdb, `users/${uid}/studySessions/${sessionId}`);
           await set(userRef, cleanSession);
-        } catch {}
+        } catch (rtdbErr) {
+          console.warn('RTDB sync notice:', rtdbErr);
+        }
       }
 
       this.updateStatus({
@@ -296,32 +299,31 @@ class AutoFirebaseService {
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Firestore save failed';
       this.updateStatus({ isSyncing: false, syncError: msg });
-      console.warn('AutoSave session notice:', msg);
+      console.error('CRITICAL: Cloud save failed:', msg);
       return false;
     }
   }
 
   async autoDeleteSession(sessionId: string): Promise<boolean> {
     const uid = await this.getAuthenticatedUid();
-    const docPath = `users/${uid}/sessions/${sessionId}`;
 
     try {
       this.updateStatus({ isSyncing: true });
 
-      const sessionDocRef = doc(db, 'users', uid, 'sessions', sessionId);
+      const sessionDocRef = doc(db, 'users', uid, 'studySessions', sessionId);
       await deleteDoc(sessionDocRef);
 
       if (rtdb) {
         try {
-          const userRef = ref(rtdb, `users/${uid}/sessions/${sessionId}`);
+          const userRef = ref(rtdb, `users/${uid}/studySessions/${sessionId}`);
           await remove(userRef);
         } catch {}
       }
 
       this.updateStatus({ isSyncing: false, lastSyncedAt: Date.now() });
       return true;
-    } catch {
-      this.updateStatus({ isSyncing: false });
+    } catch (err) {
+      this.updateStatus({ isSyncing: false, syncError: String(err) });
       return false;
     }
   }
@@ -448,9 +450,9 @@ class AutoFirebaseService {
     try {
       this.updateStatus({ isSyncing: true, syncError: null });
 
-      // Save sessions to Firestore
+      // Batch save sessions to Firestore
       for (const s of sessions) {
-        const sessionDoc = doc(db, 'users', uid, 'sessions', s.id);
+        const sessionDoc = doc(db, 'users', uid, 'studySessions', s.id);
         await setDoc(sessionDoc, { ...s, userId: uid }, { merge: true }).catch(() => {});
       }
 
@@ -492,13 +494,23 @@ class AutoFirebaseService {
     try {
       const sessionsMap = new Map<string, StudySession>();
 
-      // 1. Load from Firestore user collection
+      // 1. Load from Firestore user collection (Preferred Shared Path)
       try {
-        const sessionsColl = collection(db, 'users', uid, 'sessions');
+        const sessionsColl = collection(db, 'users', uid, 'studySessions');
         const snap = await getDocs(sessionsColl);
         snap.forEach((docItem) => {
           const data = docItem.data() as StudySession;
-          if (data && data.id && (data.startTime || data.accumulatedActiveMs !== undefined)) {
+          if (data && data.id && (data.startTime !== undefined || data.accumulatedActiveMs !== undefined)) {
+            sessionsMap.set(data.id, data);
+          }
+        });
+
+        // Also check legacy path for backward compatibility migration
+        const legacyColl = collection(db, 'users', uid, 'sessions');
+        const legacySnap = await getDocs(legacyColl);
+        legacySnap.forEach((docItem) => {
+          const data = docItem.data() as StudySession;
+          if (data && data.id && !sessionsMap.has(data.id)) {
             sessionsMap.set(data.id, data);
           }
         });
@@ -545,6 +557,7 @@ class AutoFirebaseService {
       // 6. Check RTDB legacy/shared vaults for automatic data migration
       if (rtdb) {
         const candidatePaths = [
+          `users/${uid}/studySessions`,
           `users/${uid}/sessions`,
           'study_vault/sessions',
           'study_sessions',
@@ -565,28 +578,17 @@ class AutoFirebaseService {
 
         if (!payload.subjects) {
           try {
-            const subjSnap = await get(ref(rtdb, 'study_vault/subjects'));
-            if (subjSnap.exists()) payload.subjects = subjSnap.val() as SubjectItem[];
-          } catch {}
-        }
-
-        if (!payload.goals) {
-          try {
-            const goalsSnap = await get(ref(rtdb, 'study_vault/goals'));
-            if (goalsSnap.exists()) payload.goals = goalsSnap.val() as StudyGoal[];
-          } catch {}
-        }
-
-        if (!payload.dailyReviews) {
-          try {
-            const revSnap = await get(ref(rtdb, 'study_vault/daily_reviews'));
-            if (revSnap.exists()) payload.dailyReviews = revSnap.val() as DailyReview[];
+            const subjSnap = await get(ref(rtdb, `users/${uid}/subjects`));
+            if (subjSnap.exists()) {
+              const val = subjSnap.val();
+              payload.subjects = Array.isArray(val) ? val : Object.values(val);
+            }
           } catch {}
         }
 
         if (!payload.settings) {
           try {
-            const setSnap = await get(ref(rtdb, 'study_vault/settings'));
+            const setSnap = await get(ref(rtdb, `users/${uid}/settings`));
             if (setSnap.exists()) payload.settings = setSnap.val() as UserSettings;
           } catch {}
         }
@@ -624,26 +626,65 @@ class AutoFirebaseService {
     return null;
   }
 
+  /* ---------------- REAL-TIME LISTENERS ---------------- */
+
+  /**
+   * Subscribe to real-time session updates from RTDB for cross-device responsiveness.
+   * RTDB is preferred for "Live History" updates as it's cheaper and faster for frequent small updates.
+   */
+  public subscribeToSessions(callback: (sessions: StudySession[]) => void): () => void {
+    if (!rtdb) return () => {};
+
+    let unsubscribe = () => {};
+    this.getAuthenticatedUid().then((uid) => {
+      const sessionsRef = ref(rtdb!, `users/${uid}/studySessions`);
+      const off = onValue(sessionsRef, (snapshot) => {
+        if (snapshot.exists()) {
+          const val = snapshot.val();
+          const sessions: StudySession[] = [];
+          if (typeof val === 'object') {
+            Object.values(val).forEach((s: any) => {
+              if (s && s.id && s.startTime) sessions.push(s);
+            });
+          }
+          sessions.sort((a, b) => b.startTime - a.startTime);
+          callback(sessions);
+        } else {
+          callback([]);
+        }
+      }, (err) => {
+        console.warn('RTDB Listener Error:', err);
+      });
+      unsubscribe = () => off();
+    });
+
+    return () => unsubscribe();
+  }
+
   private extractSessionsRecursively(node: unknown, collected: Map<string, StudySession>) {
     if (!node || typeof node !== 'object') return;
     const candidate = node as Record<string, unknown>;
-    if (candidate.id && (candidate.startTime || candidate.accumulatedActiveMs !== undefined)) {
+    
+    // Check if this is a session object
+    if (candidate.id && (candidate.startTime !== undefined || candidate.accumulatedActiveMs !== undefined)) {
       const s = candidate as unknown as StudySession;
       if (!collected.has(s.id)) collected.set(s.id, s);
       return;
     }
 
+    // Otherwise recurse into children
     for (const key of Object.keys(node as Record<string, unknown>)) {
       const child = (node as Record<string, unknown>)[key];
       if (child && typeof child === 'object') {
         const childCandidate = child as Record<string, unknown>;
-        if (childCandidate.id && (childCandidate.startTime || childCandidate.accumulatedActiveMs !== undefined)) {
+        if (childCandidate.id && (childCandidate.startTime !== undefined || childCandidate.accumulatedActiveMs !== undefined)) {
           const s = childCandidate as unknown as StudySession;
           if (!collected.has(s.id)) collected.set(s.id, s);
         } else {
+          // One more level for nested paths like users/uid/studySessions/id
           for (const subKey of Object.keys(childCandidate)) {
             const subChild = childCandidate[subKey] as Record<string, unknown>;
-            if (subChild && typeof subChild === 'object' && subChild.id && subChild.startTime) {
+            if (subChild && typeof subChild === 'object' && subChild.id && subChild.startTime !== undefined) {
               const s = subChild as unknown as StudySession;
               if (!collected.has(s.id)) collected.set(s.id, s);
             }

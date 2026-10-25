@@ -14,6 +14,8 @@ import {
   Clock,
   Award,
   AppWindow,
+  LogIn,
+  LogOut,
 } from 'lucide-react';
 
 interface HeaderProps {
@@ -37,6 +39,8 @@ export const Header: React.FC<HeaderProps> = ({ mobileMenuOpen, setMobileMenuOpe
     triggerManualCloudSync,
     updateSettings,
     showToast,
+    loginWithGoogle,
+    logout,
   } = useStudy();
 
   return (
@@ -160,19 +164,41 @@ export const Header: React.FC<HeaderProps> = ({ mobileMenuOpen, setMobileMenuOpe
           <span className="hidden md:inline text-[11px]">Widget Mode</span>
         </button>
 
-        {/* Student Profile Shortcut */}
-        <button
-          onClick={() => setActiveTab('settings')}
-          className="flex items-center gap-2 pl-2 sm:pl-3 pr-2 py-1.5 rounded-xl bg-slate-900/40 hover:bg-slate-800/60 border border-slate-800/80 text-xs text-slate-300 transition-colors"
-          title="Account & Settings"
-        >
-          <div className="w-6 h-6 rounded-full bg-gradient-to-tr from-amber-500/20 to-rose-500/20 border border-amber-500/30 flex items-center justify-center text-amber-300">
-            <User className="w-3.5 h-3.5" />
-          </div>
-          <span className="font-medium text-slate-200 hidden sm:inline max-w-[100px] truncate">
-            {settings.studentName || 'Student'}
-          </span>
-        </button>
+        {/* Student Profile & Auth Shortcut */}
+        <div className="flex items-center gap-1.5 bg-slate-900/40 border border-slate-800/80 rounded-xl p-0.5">
+          <button
+            onClick={() => setActiveTab('settings')}
+            className="flex items-center gap-2 pl-2 sm:pl-3 pr-2 py-1.5 rounded-lg hover:bg-slate-800/60 text-xs text-slate-300 transition-colors"
+            title="Account & Settings"
+          >
+            <div className="w-6 h-6 rounded-full bg-gradient-to-tr from-amber-500/20 to-rose-500/20 border border-amber-500/30 flex items-center justify-center text-amber-300">
+              <User className="w-3.5 h-3.5" />
+            </div>
+            <span className="font-medium text-slate-200 hidden sm:inline max-w-[100px] truncate">
+              {cloudStatus.userEmail || settings.studentName || 'Guest'}
+            </span>
+          </button>
+
+          <div className="w-[1px] h-4 bg-slate-800 mx-0.5" />
+
+          {cloudStatus.isAnonymous ? (
+            <button
+              onClick={() => loginWithGoogle()}
+              className="p-1.5 rounded-lg text-slate-400 hover:text-amber-400 hover:bg-amber-500/10 transition-all"
+              title="Sign in with Google to Sync Across Devices"
+            >
+              <LogIn className="w-4 h-4" />
+            </button>
+          ) : (
+            <button
+              onClick={() => logout()}
+              className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition-all"
+              title="Sign Out"
+            >
+              <LogOut className="w-4 h-4" />
+            </button>
+          )}
+        </div>
       </div>
     </header>
   );

@@ -104,7 +104,7 @@ export const DEFAULT_SETTINGS: UserSettings = {
   dailyGoalHours: 4,
   weeklyGoalHours: 25,
   monthlyGoalHours: 100,
-  defaultSubject: 'Physics',
+  defaultSubject: 'General Study',
   defaultTimerMode: 'stopwatch',
   pomodoroWorkMin: 25,
   pomodoroShortBreakMin: 5,
