@@ -49,6 +49,7 @@ import {
   DailyReview,
   BackupSnapshot,
 } from '../types';
+import { setCachedDriveToken } from './googleDrive';
 
 // Initialize Firebase safely
 export const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
@@ -254,7 +255,6 @@ class AutoFirebaseService {
       const result = await signInWithPopup(auth, provider);
       const credential = GoogleAuthProvider.credentialFromResult(result);
       if (credential?.accessToken) {
-        const { setCachedDriveToken } = await import('./googleDrive');
         setCachedDriveToken(credential.accessToken);
       }
 
@@ -275,7 +275,6 @@ class AutoFirebaseService {
 
   public async logOut(): Promise<void> {
     try {
-      const { setCachedDriveToken } = await import('./googleDrive');
       setCachedDriveToken(null);
       await signOut(auth);
       // Re-sign in anonymously for seamless session
