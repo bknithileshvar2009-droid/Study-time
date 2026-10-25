@@ -21,6 +21,7 @@ import {
   Sparkles,
   Tag as TagIcon,
   Award,
+  AppWindow,
 } from 'lucide-react';
 
 export const SettingsView: React.FC = () => {
@@ -168,7 +169,61 @@ export const SettingsView: React.FC = () => {
         </div>
       </div>
 
-      {/* 1. Student Identity & PDF Header Profile */}
+      {/* 1. Widget Mode ON / OFF Toggle */}
+      <div className="p-6 rounded-2xl bg-gradient-to-r from-[#0c0e15] to-[#131724] border border-amber-500/30 shadow-xl space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400">
+              <AppWindow className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="text-sm font-bold text-white tracking-wide">
+                  Widget Mode
+                </h3>
+                <span
+                  className={`text-[10px] uppercase font-bold px-2 py-0.5 rounded font-mono ${
+                    settings.widgetMode
+                      ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
+                      : 'bg-slate-800 text-slate-400 border border-slate-700'
+                  }`}
+                >
+                  {settings.widgetMode ? 'ON (Minimal Widget)' : 'OFF (Full Tracker)'}
+                </span>
+              </div>
+              <p className="text-xs text-slate-400 mt-1 leading-relaxed">
+                Switches application to a minimal, ultra-clean widget containing only the study timer, start/stop buttons, and session history. Ideal for multitasking and APES AI embedding.
+              </p>
+            </div>
+          </div>
+
+          <button
+            onClick={async () => {
+              const nextMode = !settings.widgetMode;
+              await updateSettings({ widgetMode: nextMode });
+              showToast(nextMode ? 'Widget Mode activated' : 'Full Dashboard restored');
+            }}
+            className={`w-14 h-7 rounded-full transition-colors relative cursor-pointer p-0.5 shrink-0 self-start sm:self-center ${
+              settings.widgetMode ? 'bg-amber-500' : 'bg-slate-800'
+            }`}
+            aria-label="Toggle Widget Mode"
+          >
+            <div
+              className={`w-6 h-6 rounded-full bg-white transition-transform flex items-center justify-center shadow-md ${
+                settings.widgetMode ? 'translate-x-7' : 'translate-x-0'
+              }`}
+            >
+              {settings.widgetMode ? (
+                <CheckCircle className="w-3.5 h-3.5 text-amber-600" />
+              ) : (
+                <div className="w-2 h-2 rounded-full bg-slate-400" />
+              )}
+            </div>
+          </button>
+        </div>
+      </div>
+
+      {/* 2. Student Identity & PDF Header Profile */}
       <div className="p-6 rounded-2xl bg-[#0c0e15] border border-amber-500/20 shadow-xl space-y-4">
         <div className="flex items-center gap-3">
           <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400">

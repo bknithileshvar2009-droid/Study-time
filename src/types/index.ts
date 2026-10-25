@@ -117,6 +117,7 @@ export interface UserSettings {
   maxAutoSnapshots: number;
   autoSaveCloud: boolean;
   themeAccent: 'crimson-gold' | 'pure-gold' | 'crimson-noir';
+  widgetMode: boolean;
 }
 
 export interface DailySummary {

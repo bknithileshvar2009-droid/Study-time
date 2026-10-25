@@ -16,6 +16,7 @@ import {
   Settings,
   Activity,
   Flame,
+  AppWindow,
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -24,7 +25,7 @@ interface SidebarProps {
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({ mobileMenuOpen, setMobileMenuOpen }) => {
-  const { activeTab, setActiveTab, activeSession, isTimerRunning } = useStudy();
+  const { activeTab, setActiveTab, activeSession, isTimerRunning, updateSettings, showToast } = useStudy();
 
   const coreNav: { id: ViewTab; label: string; icon: React.ReactNode; badge?: string }[] = [
     {
@@ -192,6 +193,19 @@ export const Sidebar: React.FC<SidebarProps> = ({ mobileMenuOpen, setMobileMenuO
 
           {/* Group 3: System & Storage */}
           {renderNavGroup('System & Vault', systemNav)}
+
+          {/* Minimal Widget Mode Launcher */}
+          <button
+            onClick={async () => {
+              await updateSettings({ widgetMode: true });
+              setMobileMenuOpen(false);
+              showToast('Switched to Minimal Widget Mode');
+            }}
+            className="w-full mt-2 py-2 px-3 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-amber-300 text-xs font-semibold flex items-center justify-center gap-2 transition-all cursor-pointer"
+          >
+            <AppWindow className="w-3.5 h-3.5 text-amber-400" />
+            <span>Minimal Widget Mode</span>
+          </button>
         </div>
 
         {/* Bottom Focus / Identity Card */}

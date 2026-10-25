@@ -277,6 +277,10 @@
           "type": "string",
           "description": "Theme accent palette.",
           "enum": ["crimson-gold", "pure-gold", "crimson-noir"]
+        },
+        "widgetMode": {
+          "type": "boolean",
+          "description": "Whether minimal widget mode is enabled."
         }
       },
       "required": ["studentName", "dailyGoalHours", "defaultSubject"]

@@ -13,6 +13,7 @@ import {
   X,
   Clock,
   Award,
+  AppWindow,
 } from 'lucide-react';
 
 interface HeaderProps {
@@ -34,6 +35,8 @@ export const Header: React.FC<HeaderProps> = ({ mobileMenuOpen, setMobileMenuOpe
     settings,
     totalHoursFormatted,
     triggerManualCloudSync,
+    updateSettings,
+    showToast,
   } = useStudy();
 
   return (
@@ -142,6 +145,19 @@ export const Header: React.FC<HeaderProps> = ({ mobileMenuOpen, setMobileMenuOpe
           <span className="hidden lg:inline text-[11px]">
             {cloudStatus.isSyncing ? 'Syncing...' : 'Firebase Auto-Synced'}
           </span>
+        </button>
+
+        {/* Minimal Widget Mode Toggle Button */}
+        <button
+          onClick={async () => {
+            await updateSettings({ widgetMode: true });
+            showToast('Switched to Minimal Widget Mode');
+          }}
+          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-semibold border bg-amber-500/10 hover:bg-amber-500/20 border-amber-500/30 text-amber-300 transition-all cursor-pointer"
+          title="Switch to Minimal Widget Mode (ideal for embedding in APES AI)"
+        >
+          <AppWindow className="w-3.5 h-3.5 text-amber-400" />
+          <span className="hidden md:inline text-[11px]">Widget Mode</span>
         </button>
 
         {/* Student Profile Shortcut */}

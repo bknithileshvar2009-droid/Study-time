@@ -23,6 +23,7 @@ import { DiagnosticsView } from './components/DiagnosticsView';
 import { SessionDetailModal } from './components/SessionDetailModal';
 import { EditSessionModal } from './components/EditSessionModal';
 import { ManualSessionModal } from './components/ManualSessionModal';
+import { MinimalWidgetView } from './components/MinimalWidgetView';
 import { StudySession } from './types';
 import { formatDurationHuman } from './utils/timeFormat';
 import { CheckCircle2, AlertTriangle, Clock } from 'lucide-react';
@@ -44,6 +45,45 @@ function MainApp() {
   const [inspectedSession, setInspectedSession] = useState<StudySession | null>(null);
   const [editingSession, setEditingSession] = useState<StudySession | null>(null);
   const [manualModalOpen, setManualModalOpen] = useState(false);
+
+  // Minimal Widget Mode: Displays ONLY the minimal timer & study history
+  if (settings.widgetMode) {
+    return (
+      <div className="min-h-screen bg-[#07080c] text-[#f1f2f6] flex flex-col font-sans">
+        {idleDetected && (
+          <div className="bg-amber-500/20 border-b border-amber-500/40 text-amber-200 px-4 py-2 flex flex-wrap items-center justify-between gap-2 text-xs z-50">
+            <span>
+              <strong>Inactivity:</strong> {formatDurationHuman(idleDurationMs)} inactive.
+            </span>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleKeepIdleTime}
+                className="px-2 py-0.5 bg-amber-500 text-black font-bold rounded text-[11px]"
+              >
+                Keep
+              </button>
+              <button
+                onClick={handleTrimIdleTime}
+                className="px-2 py-0.5 bg-slate-800 text-slate-200 font-semibold rounded text-[11px]"
+              >
+                Trim
+              </button>
+            </div>
+          </div>
+        )}
+
+        <MinimalWidgetView />
+
+        {/* Global Toast Notification */}
+        {toastMessage && (
+          <div className="fixed bottom-4 right-4 z-50 flex items-center gap-2 px-3.5 py-2 bg-[#111420] border border-amber-500/40 text-amber-200 text-xs font-semibold rounded-xl shadow-2xl no-print">
+            <CheckCircle2 className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+            <span>{toastMessage}</span>
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-[#07080c] text-[#f1f2f6] flex flex-col font-sans">

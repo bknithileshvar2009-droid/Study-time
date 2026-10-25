@@ -296,8 +296,14 @@ export const StudyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           storageService.getActiveSession(),
         ]);
 
+        const urlHasWidget = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('widget') === 'true';
+        const effectiveSettings: UserSettings = {
+          ...savedSettings,
+          widgetMode: urlHasWidget ? true : (savedSettings.widgetMode ?? false),
+        };
+
         if (isMounted) {
-          setSettings(savedSettings);
+          setSettings(effectiveSettings);
           setSessions(savedSessions);
           setSubjects(savedSubjects.length > 0 ? savedSubjects : DEFAULT_SUBJECTS);
           setGoals(savedGoals);
@@ -358,10 +364,14 @@ export const StudyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
             // 5. Settings
             if (cloudPayload.settings) {
-              setSettings(cloudPayload.settings);
-              storageService.saveSettings(cloudPayload.settings);
+              const mergedSettings: UserSettings = {
+                ...cloudPayload.settings,
+                widgetMode: urlHasWidget ? true : (cloudPayload.settings.widgetMode ?? effectiveSettings.widgetMode ?? false),
+              };
+              setSettings(mergedSettings);
+              storageService.saveSettings(mergedSettings);
             } else if (savedSettings) {
-              autoFirebaseService.autoSaveSettings(savedSettings).catch(() => {});
+              autoFirebaseService.autoSaveSettings(effectiveSettings).catch(() => {});
             }
 
             // Sync merged state

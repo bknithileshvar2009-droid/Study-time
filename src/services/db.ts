@@ -135,6 +135,7 @@ export const DEFAULT_SETTINGS: UserSettings = {
   maxAutoSnapshots: 5,
   autoSaveCloud: true,
   themeAccent: 'crimson-gold',
+  widgetMode: false,
 };
 
 class MasterStorageService {
