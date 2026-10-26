@@ -10,6 +10,71 @@ import { auth } from './firebase';
 // In-Memory Token Cache (Never stored in LocalStorage/SessionStorage per security mandate)
 let cachedDriveAccessToken: string | null = null;
 
+/**
+ * Diagnostic helper: Probe window.gapi and window.google.accounts for client library state
+ */
+export function checkAndLogGapiAuth2Status() {
+  console.group('[Google Drive Client & gapi.auth2 Lifecycle Diagnostic Probe]');
+  const timeStr = new Date().toLocaleTimeString();
+  
+  if (typeof window === 'undefined') {
+    console.log('[gapi Probe] Executing in non-window/SSR context.');
+    console.groupEnd();
+    return;
+  }
+
+  const gapiObj = (window as any).gapi;
+  const hasGapi = typeof gapiObj !== 'undefined';
+  const hasGapiAuth2 = hasGapi && typeof gapiObj.auth2 !== 'undefined';
+  const hasGis = typeof (window as any).google?.accounts?.oauth2 !== 'undefined';
+
+  console.log(`[GAPI Lifecycle Probe] [${timeStr}] window.gapi loaded:`, hasGapi);
+  console.log(`[GAPI Lifecycle Probe] [${timeStr}] window.gapi.client loaded:`, hasGapi && typeof gapiObj.client !== 'undefined');
+  console.log(`[GAPI Lifecycle Probe] [${timeStr}] window.gapi.auth2 loaded:`, hasGapiAuth2);
+  console.log(`[GAPI Lifecycle Probe] [${timeStr}] window.google.accounts.oauth2 (GIS) loaded:`, hasGis);
+
+  if (hasGapiAuth2) {
+    try {
+      console.log('[gapi.auth2 Evaluation] Calling gapi.auth2.getAuthInstance()...');
+      const auth2Instance = gapiObj.auth2.getAuthInstance();
+      if (auth2Instance) {
+        const isSignedIn = auth2Instance.isSignedIn?.get();
+        const currentUser = auth2Instance.currentUser?.get();
+        const authResponse = currentUser?.getAuthResponse();
+        console.log('[gapi.auth2 Instance State] getAuthInstance() returned valid instance!');
+        console.log('[gapi.auth2 Instance State] User is currently signed in:', Boolean(isSignedIn));
+        console.log('[gapi.auth2 Instance State] Basic Profile Email:', currentUser?.getBasicProfile?.()?.getEmail?.() || 'N/A');
+        console.log('[gapi.auth2 Instance State] Access Token Present:', Boolean(authResponse?.access_token));
+        addDriveDiagnosticLog('auth', `gapi.auth2.getAuthInstance() active (Signed In: ${Boolean(isSignedIn)})`);
+      } else {
+        console.warn('[gapi.auth2 Instance State] gapi.auth2 is present, but getAuthInstance() returned null (gapi.auth2.init has not completed yet).');
+        addDriveDiagnosticLog('auth', 'gapi.auth2 loaded but getAuthInstance() returned null (awaiting init)');
+      }
+    } catch (err: any) {
+      console.warn('[gapi.auth2 Exception] Failed inspecting gapi.auth2.getAuthInstance():', err.message || err);
+    }
+  } else if (hasGapi) {
+    console.log('[GAPI Lifecycle Probe] window.gapi exists, probing gapi.load("client:auth2") state...');
+    try {
+      if (typeof gapiObj.load === 'function') {
+        console.log('[GAPI Lifecycle Probe] gapi.load function detected. GAPI is ready for client:auth2 module loading.');
+      }
+    } catch (e) {
+      console.warn('[GAPI Lifecycle Probe] Error probing gapi.load:', e);
+    }
+  } else {
+    console.log('[GAPI Lifecycle Probe] window.gapi is not injected into DOM yet. GAPI scripts loading asynchronously.');
+  }
+
+  console.log(`[Google Drive Service State] In-memory cachedDriveAccessToken present:`, Boolean(cachedDriveAccessToken));
+  console.groupEnd();
+}
+
+// Automatically execute probe on module load & window event triggers
+if (typeof window !== 'undefined') {
+  setTimeout(() => checkAndLogGapiAuth2Status(), 1000);
+}
+
 export interface DriveDiagnosticLog {
   timestamp: string;
   type: 'auth' | 'lookup' | 'upload' | 'restore' | 'error';
@@ -65,20 +130,26 @@ export interface DriveFileItem {
  * Authenticate or re-authenticate with Google Drive OAuth scopes
  */
 export async function authenticateGoogleDrive(): Promise<string> {
-  console.group('[Google Drive OAuth Lifecycle]');
+  console.group('[OAuth Popup State Machine & Callback Lifecycle]');
+  console.log('[OAuth Transition] STATE: IDLE -> INITIATING_OAUTH_FLOW');
+  
   if (cachedDriveAccessToken) {
     const tokenPreview = `${cachedDriveAccessToken.substring(0, 6)}...`;
-    console.log('[Google Drive OAuth] Step 0: Found existing valid token in memory:', tokenPreview);
+    console.log('[OAuth Transition] Existing valid token found in memory cache:', tokenPreview);
     addDriveDiagnosticLog('auth', 'Reusing existing in-memory OAuth access token');
     console.groupEnd();
     return cachedDriveAccessToken;
   }
 
-  console.log('[Google Drive OAuth] Step 1: Creating GoogleAuthProvider instance...');
+  // Pre-flight probe
+  checkAndLogGapiAuth2Status();
+
+  console.log('[OAuth Transition] STEP 1: Constructing GoogleAuthProvider instance...');
   addDriveDiagnosticLog('auth', 'Initiating Google OAuth sign-in popup for Drive scopes...');
+  
   try {
     const provider = new GoogleAuthProvider();
-    console.log('[Google Drive OAuth] Step 2: Requesting OAuth scopes: https://www.googleapis.com/auth/drive, https://www.googleapis.com/auth/drive.file');
+    console.log('[OAuth Transition] STEP 2: Adding required scopes: https://www.googleapis.com/auth/drive, https://www.googleapis.com/auth/drive.file');
     provider.addScope('https://www.googleapis.com/auth/drive');
     provider.addScope('https://www.googleapis.com/auth/drive.file');
     provider.setCustomParameters({
@@ -86,22 +157,29 @@ export async function authenticateGoogleDrive(): Promise<string> {
       access_type: 'offline',
     });
 
-    console.log('[Google Drive OAuth] Step 3: Triggering Firebase signInWithPopup(auth, provider)...');
+    console.log('[OAuth Transition] STATE: INITIATING_OAUTH_FLOW -> AWAITING_POPUP_CALLBACK');
+    console.log('[OAuth Transition] STEP 3: Invoking Firebase signInWithPopup(auth, provider)... Opening OAuth window.');
+    
+    const startTime = Date.now();
     const result = await signInWithPopup(auth, provider);
+    const durationMs = Date.now() - startTime;
+    
+    console.log(`[OAuth Transition] STATE: AWAITING_POPUP_CALLBACK -> POPUP_RESOLVED (Completed in ${durationMs}ms)`);
     const userIdentifier = result.user.email || result.user.uid;
-    console.log('[Google Drive OAuth] Step 4: OAuth Popup returned user credentials for:', userIdentifier);
+    console.log('[OAuth Transition] STEP 4: OAuth popup callback returned user credential payload for user:', userIdentifier);
 
-    console.log('[Google Drive OAuth] Step 5: Extracting GoogleAuthProvider access token from result...');
+    console.log('[OAuth Transition] STEP 5: Parsing OAuth credential result from GoogleAuthProvider...');
     const credential = GoogleAuthProvider.credentialFromResult(result);
     let token = credential?.accessToken;
 
     if (!token && (result as any)._tokenResponse?.oauthAccessToken) {
       token = (result as any)._tokenResponse.oauthAccessToken;
-      console.log('[Google Drive OAuth] Token recovered from _tokenResponse.oauthAccessToken');
+      console.log('[OAuth Transition] Token fallback: Recovered token from _tokenResponse.oauthAccessToken');
     }
 
     if (!token) {
-      console.error('[Google Drive OAuth Error] Step 5 Failed: Credential exists but accessToken is null/undefined.');
+      console.error('[OAuth Transition Error] STATE: POPUP_RESOLVED -> ERROR_MISSING_ACCESS_TOKEN');
+      console.error('[OAuth Transition Error] Firebase auth succeeded but credential.accessToken was empty.');
       addDriveDiagnosticLog('error', 'Firebase Auth completed but OAuth access token was missing in credential result');
       console.groupEnd();
       throw new Error('Failed to obtain Google Drive access token from authentication result. Please ensure Drive permissions were allowed in the Google consent prompt.');
@@ -109,14 +187,18 @@ export async function authenticateGoogleDrive(): Promise<string> {
 
     cachedDriveAccessToken = token;
     const tokenPreview = `${cachedDriveAccessToken.substring(0, 6)}...${cachedDriveAccessToken.substring(cachedDriveAccessToken.length - 4)}`;
-    console.log('[Google Drive OAuth] Step 6: Access token successfully acquired and cached:', tokenPreview);
+    
+    console.log('[OAuth Transition] STATE: POPUP_RESOLVED -> AUTHENTICATED_AND_CACHED');
+    console.log('[OAuth Transition] STEP 6: OAuth token cached successfully in memory:', tokenPreview);
     addDriveDiagnosticLog('auth', `Successfully authenticated as ${userIdentifier} (Token cached)`);
+    
     console.groupEnd();
     return cachedDriveAccessToken;
   } catch (err: any) {
     const errCode = err.code || 'UNKNOWN_AUTH_CODE';
     const errMsg = err.message || 'OAuth popup failed or was closed by user';
-    console.error(`[Google Drive OAuth Error] Code: ${errCode} | Message: ${errMsg}`, err);
+    console.error(`[OAuth Transition Error] STATE: AWAITING_POPUP_CALLBACK -> FAILED [Code: ${errCode}]`);
+    console.error(`[OAuth Transition Error] Message: ${errMsg}`, err);
     addDriveDiagnosticLog('error', `OAuth Authentication Failed [${errCode}]: ${errMsg}`);
     console.groupEnd();
     throw err;
